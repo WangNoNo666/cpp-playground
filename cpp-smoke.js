@@ -105,16 +105,6 @@ function buildSandbox(){
     'tabs=' + tabs2.length + ' last=' + (tabs2[tabs2.length - 1] || {}).name);
   ok('new tab auto-activated', s.window.__app().activeId === tabs2[tabs2.length - 1].id);
 
-  // 解析器（canned HTML）
-  const P = s.window.__parsers;
-  const atHtml = '<h3>入力例 1</h3><pre>3 4</pre><h3>出力例 1</h3><pre>Even</pre><h3>入力例 2</h3><pre>1 21</pre><h3>出力例 2</h3><pre>Odd</pre>';
-  const atCases = P.parseAtCoder(atHtml);
-  ok('parseAtCoder extracts 2 cases', atCases.length === 2 && atCases[0].input === '3 4' && atCases[0].expected === 'Even', JSON.stringify(atCases));
-  const cfHtml = '<div class="input"><pre>5 3</pre></div><div class="output"><pre>2</pre></div>';
-  const cfCases = P.parseCF(cfHtml);
-  ok('parseCF extracts case', cfCases.length === 1 && cfCases[0].expected === '2');
-  ok('decodeEntities', P.decodeEntities('a &lt; b &amp;&amp; c') === 'a < b && c');
-
   // 真实 Wandbox 运行（2 用例 → 批量模式：一次请求）
   const mainTab = s.window.__tabs().find(t => t.name === 'main.cpp');
   s.window.__setCode('#include <iostream>\nint main(){ int a,b; std::cin>>a>>b; std::cout << (a+b) << "\\n"; return 0; }');
@@ -185,36 +175,23 @@ function buildSandbox(){
   (win._handlers['beforeunload'] || []).forEach(fn => fn(be));
   ok('Ctrl+W beforeunload backstop', pdCalled && be.returnValue === '', 'pd=' + pdCalled);
 
-  // Ctrl+N 新建文件 / Ctrl+O 打开本地文件
+  // Ctrl+N / Ctrl+O 及 Alt 组合（Chrome 保留 Ctrl+N/W，Alt 组合为可靠键）
   const tn = s.window.__app().tabCount;
   (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'n', ctrlKey: true, preventDefault(){} }));
   ok('Ctrl+N new tab', s.window.__app().tabCount === tn + 1, 'before=' + tn + ' after=' + s.window.__app().tabCount);
+  const ta = s.window.__app().tabCount;
+  (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'n', altKey: true, preventDefault(){} }));
+  ok('Alt+N new tab', s.window.__app().tabCount === ta + 1, 'before=' + ta + ' after=' + s.window.__app().tabCount);
   let openClicked = false;
   doc.getElementById('fileInput').click = () => { openClicked = true; };
   (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'o', ctrlKey: true, preventDefault(){} }));
   ok('Ctrl+O opens file dialog', openClicked, 'clicked=' + openClicked);
-
-  // 抓取：模拟浏览器 CORS（直连必失败，代理可控）
-  const AT_HTML = '<!--' + 'x'.repeat(600) + '--><h3>入力例 1</h3><pre>3 4</pre><h3>出力例 1</h3><pre>Even</pre><h3>入力例 2</h3><pre>1 21</pre><h3>出力例 2</h3><pre>Odd</pre>';
-  const realFetch = s.fetch;
-  s.fetch = (u, opt) => {
-    const str = String(u);
-    if (str.startsWith('https://atcoder.jp')) return Promise.reject(new TypeError('Failed to fetch'));
-    if (str.includes('allorigins.win/raw')) return Promise.resolve({ ok: true, text: async () => AT_HTML });
-    return Promise.reject(new TypeError('proxy down'));
-  };
-  doc.getElementById('fetchUrl').value = 'https://atcoder.jp/contests/abc086/tasks/abc086_a';
-  await s.window.__fetchCases();
-  await sleep(50);
-  const fc = s.window.__cases();
-  ok('fetchCases via proxy (CORS simulation)', fc.length === 2 && fc[0].input === '3 4' && fc[0].expected === 'Even', 'cases=' + fc.length + ' status=' + doc.getElementById('statusText').textContent);
-  // 全失败时给出尝试明细
-  s.fetch = () => Promise.reject(new TypeError('all down'));
-  doc.getElementById('fetchUrl').value = 'https://atcoder.jp/contests/abc001/tasks/abc001_1';
-  await s.window.__fetchCases();
-  await sleep(50);
-  ok('fetch failure shows detail', (doc.getElementById('statusText').textContent || '').indexOf('抓取失败') >= 0, doc.getElementById('statusText').textContent);
-  s.fetch = realFetch;
+  openClicked = false;
+  (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'o', altKey: true, preventDefault(){} }));
+  ok('Alt+O opens file dialog', openClicked, 'clicked=' + openClicked);
+  const tw = s.window.__app().tabCount;
+  (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'w', altKey: true, preventDefault(){} }));
+  ok('Alt+W closes tab', s.window.__app().tabCount === tw - 1, 'before=' + tw + ' after=' + s.window.__app().tabCount);
 
   console.log(errors.length ? ('\n' + errors.length + ' FAILURES') : '\nALL CPP-PLAYGROUND V2 TESTS PASSED');
   process.exit(errors.length ? 1 : 0);

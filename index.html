@@ -50,13 +50,6 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
 #sideHead{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border);font-size:13px;}
 #sideHead b{color:var(--fg);}
 #sideHead .hint{font-size:11px;color:var(--fg2);}
-#fetchRow{display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border);}
-#fetchUrl{flex:1;background:#1a1a1a;color:var(--fg);border:1px solid var(--border);border-radius:5px;
-  padding:5px 8px;font-size:12px;outline:none;min-width:0;}
-#fetchUrl:focus{border-color:var(--acc2);}
-#fetchBtn{background:var(--acc);border:none;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;}
-#fetchBtn:hover{background:var(--acc2);}
-#fetchBtn:disabled{opacity:.5;cursor:wait;}
 #caseList{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px;}
 .caseBox{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;flex:0 0 auto;}
 .caseHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px;}
@@ -122,10 +115,6 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
   <div id="editorWrap"><div id="editor"></div></div>
   <div id="sidePanel">
     <div id="sideHead"><b>测试用例</b><span class="hint">F9 运行 · 拖入 .in/.out 文件可填用例</span></div>
-    <div id="fetchRow">
-      <input id="fetchUrl" placeholder="题目 URL（AtCoder / Codeforces）" spellcheck="false">
-      <button id="fetchBtn">抓取</button>
-    </div>
     <div id="caseList"></div>
     <div style="padding:8px;"><button id="addCaseBtn">＋ 添加用例</button></div>
   </div>
@@ -153,7 +142,7 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
   <span>时限</span><input id="timeLimit" value="10000" title="单次运行时限（毫秒），超时自动停止" spellcheck="false">
   <span id="statusText">就绪 — 按 F9 运行全部样例</span>
   <span id="memText" title="编译后端不提供内存统计，故显示为 —">内存 —</span>
-  <span id="shortcutHint">F9 运行 · Ctrl+Enter 自定义输入 · Ctrl+S 保存 · Ctrl+N 新建 · Ctrl+W 关闭 · Ctrl+O 打开 · 拖拽文件打开</span>
+  <span id="shortcutHint" title="Chrome 中 Ctrl+W/N 为浏览器快捷键，请用 Alt 组合">F9 运行 · Ctrl+Enter 自定义输入 · Ctrl+S 保存 · Alt+N 新建 · Alt+W 关标签 · Alt+O 打开 · 拖拽文件打开</span>
 </div>
 <div id="dropHint"><div class="box">📄 松开以打开文件（自动新建标签）</div></div>
 <input type="file" id="fileInput" multiple hidden>
@@ -166,7 +155,6 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
  * 快捷键: F9 样例 / Ctrl+Enter 自定义输入 / Ctrl+S 保存
  *         Ctrl+N 新建 / Ctrl+W 关闭 / Ctrl+O 打开
  * 拖拽: 代码文件→新标签; .in/.out 文件→填入用例
- * 用例抓取: AtCoder / Codeforces（直连→allorigins 代理兜底）
  * 分享: 复制带代码的 URL 链接
  * 时限: 自定义毫秒数，超时自动中止（防卡死）
  * ============================================================ */
@@ -355,111 +343,6 @@ $('caseFileInput').addEventListener('change', e => {
   caseUploadTarget = null;
   e.target.value = '';
 });
-
-/* ---------------- 用例抓取（AtCoder / Codeforces） ---------------- */
-function decodeEntities(s){
-  return String(s || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/&#x([0-9a-fA-F]+);/g, (m, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&nbsp;/g, ' ').replace(/&minus;/g, '-').replace(/&times;/g, 'x');
-}
-function parseAtCoder(html){
-  const ins = [...html.matchAll(/入力例\s*\d+\s*<\/h3>\s*<pre[^>]*>([\s\S]*?)<\/pre>/g)].map(m => decodeEntities(m[1]).trim());
-  const outs = [...html.matchAll(/出力例\s*\d+\s*<\/h3>\s*<pre[^>]*>([\s\S]*?)<\/pre>/g)].map(m => decodeEntities(m[1]).trim());
-  const n = Math.min(ins.length, outs.length);
-  const out = [];
-  for (let i = 0; i < n; i++) out.push({ input: ins[i], expected: outs[i] });
-  return out;
-}
-function parseCF(html){
-  const re = /<div class="input"><pre>([\s\S]*?)<\/pre><\/div>\s*<div class="output"><pre>([\s\S]*?)<\/pre><\/div>/g;
-  const out = [];
-  let m;
-  while ((m = re.exec(html))) out.push({ input: decodeEntities(m[1]).trim(), expected: decodeEntities(m[2]).trim() });
-  return out;
-}
-function parseGeneric(html){
-  const reIn = /(?:样例输入|Sample Input|示例输入)\s*\d*\s*<\/?[^>]*>\s*<pre[^>]*>([\s\S]*?)<\/pre>/gi;
-  const reOut = /(?:样例输出|Sample Output|示例输出)\s*\d*\s*<\/?[^>]*>\s*<pre[^>]*>([\s\S]*?)<\/pre>/gi;
-  const ins = [...html.matchAll(reIn)].map(m => decodeEntities(m[1]).trim());
-  const outs = [...html.matchAll(reOut)].map(m => decodeEntities(m[1]).trim());
-  const n = Math.min(ins.length, outs.length);
-  const out = [];
-  for (let i = 0; i < n; i++) out.push({ input: ins[i], expected: outs[i] });
-  return out;
-}
-function abortSignal(ms){
-  const ctl = new AbortController();
-  setTimeout(() => ctl.abort(), ms);
-  return ctl.signal;
-}
-async function fetchText(url){
-  const enc = encodeURIComponent(url);
-  const tried = [];
-  // 1) 直连（5s 超时；浏览器跨域会被 CORS 快速拒绝，网络挂起则超时跳过）
-  try {
-    const r = await fetch(url, { headers: { 'Accept': 'text/html' }, signal: abortSignal(5000) });
-    if (r.ok){
-      const t = await r.text();
-      if (t && t.length > 500) return { text: t, via: '直连' };
-    }
-    tried.push('直连');
-  } catch (e) { tried.push('直连'); }
-  // 2) 所有代理并行竞争，取第一个有效结果；失败自动重试一轮
-  const proxies = [
-    ['allorigins.raw', 'https://api.allorigins.win/raw?url=' + enc],
-    ['allorigins.get', 'https://api.allorigins.win/get?url=' + enc],
-    ['codetabs', 'https://api.codetabs.com/v1/proxy?quest=' + enc]
-  ];
-  for (let round = 1; round <= 2; round++){
-    setStatus('通过代理抓取中（第 ' + round + ' 轮，共 2 轮）…');
-    const results = await Promise.allSettled(proxies.map(async ([name, u]) => {
-      const r = await fetch(u, { signal: abortSignal(12000) });
-      if (!r.ok) throw new Error(name + '(HTTP ' + r.status + ')');
-      let t = await r.text();
-      if (t && t.charAt(0) === '{'){
-        try { const j = JSON.parse(t); if (j.contents) t = j.contents; } catch (e) {}
-      }
-      if (!t || t.length <= 500) throw new Error(name + '(内容过短)');
-      return { text: t, via: name };
-    }));
-    for (const res of results){
-      if (res.status === 'fulfilled') return res.value;
-    }
-    for (const res of results) tried.push(res.reason.message);
-  }
-  return { error: tried.join(' · ') };
-}
-async function fetchCases(){
-  const url = $('fetchUrl').value.trim();
-  if (!url){ setStatus('⚠ 请输入题目 URL'); return; }
-  const btn = $('fetchBtn');
-  btn.disabled = true;
-  setStatus('抓取题目 ' + url + ' …');
-  const got = await fetchText(url);
-  btn.disabled = false;
-  if (!got || got.error){ setStatus('⚠ 抓取失败（' + (got ? got.error : '未知') + '）— 稍后重试，或改用 AtCoder 题目、手动添加用例'); return; }
-  if (/codeforces\.com/i.test(url) && /Just a moment|cf-challenge|Cloudflare/i.test(got.text)){
-    setStatus('⚠ Codeforces 有反爬验证，代理无法获取；请改用 AtCoder 题目或手动添加用例');
-    return;
-  }
-  let parsed = [];
-  if (/atcoder\.jp/i.test(url)) parsed = parseAtCoder(got.text);
-  else if (/codeforces\.com/i.test(url)) parsed = parseCF(got.text);
-  else parsed = parseGeneric(got.text);
-  if (!parsed.length){
-    const frag = got.text.replace(/\s+/g, ' ').slice(0, 70);
-    setStatus('⚠ 未能提取样例（' + got.via + '），页面片段: ' + frag + ' …');
-    return;
-  }
-  if (cases.length && !confirm('已有 ' + cases.length + ' 个用例，是否替换为抓取到的 ' + parsed.length + ' 个样例？')){
-    setStatus('已取消，未替换'); return;
-  }
-  cases = parsed.map(x => ({ input: x.input, expected: x.expected, result: null, actual: '', time: null }));
-  renderCases();
-  scheduleSave();
-  setStatus('✓ 抓取到 ' + cases.length + ' 个样例（' + got.via + '）');
-}
 
 /* ---------------- 编译后端 ---------------- */
 const WANDBOX_COMPILERS = ['gcc-head', 'gcc-13.2.0', 'gcc-12.3.0', 'gcc-11.4.0', 'clang-head', 'clang-18.1.0'];
@@ -655,7 +538,7 @@ async function runAll(){
   if (running) return;
   const code = getCode();
   if (!code.trim()){ setStatus('⚠ 代码为空'); return; }
-  if (!cases.length){ setStatus('⚠ 没有测试用例 — 添加用例或输入题目 URL 抓取'); return; }
+  if (!cases.length){ setStatus('⚠ 没有测试用例 — 点「＋ 添加用例」或拖入 .in/.out 文件'); return; }
   running = true;
   $('runBtn').disabled = true;
   cases.forEach(c => { c.result = null; c.actual = ''; c.time = null; });
@@ -828,24 +711,31 @@ function loadShare(){
   }
 }
 
-/* ---------------- 快捷键（双重绑定 + 防重复 + Ctrl+W 兜底） ---------------- */
+/* ---------------- 快捷键（双重绑定 + 防重复 + Ctrl+W 兜底） ----------------
+ * 注意: Chrome/Edge 将 Ctrl+W/N/T 列为浏览器保留快捷键，页面无法用
+ *       preventDefault 拦截（Ctrl+W 会直接关浏览器标签页、Ctrl+N 会开新窗口）。
+ *       因此提供 Alt 组合作为可靠替代，Ctrl+W 另用 beforeunload 兜底。 */
 let suppressClose = false;   // Ctrl+W 拦截失败时 by beforeunload 兜底
 function handleKeys(e){
   if (e.__petalioHandled) return;   // 防同一事件被多个监听重复处理
   e.__petalioHandled = true;
   const k = e.key;
   const ctrl = e.ctrlKey || e.metaKey;
+  const alt = e.altKey;
   if (k === 'F9'){ e.preventDefault(); runAll(); return; }
   if (ctrl && k === 'Enter'){ e.preventDefault(); activateOutTab('input'); $('customInput').className = 'show'; runCustom(); return; }
   if (ctrl && (k === 's' || k === 'S')){ e.preventDefault(); saveFile(); return; }
-  if (ctrl && (k === 'n' || k === 'N')){ e.preventDefault(); newTab('untitled' + (idSeq) + '.cpp'); return; }
+  if (ctrl && (k === 'n' || k === 'N')){ e.preventDefault(); newTab('untitled' + (idSeq) + '.cpp'); return; }   // 尽力而为（Chrome 可能拦截）
+  if (alt && (k === 'n' || k === 'N')){ e.preventDefault(); newTab('untitled' + (idSeq) + '.cpp'); return; }      // Alt+N 可靠
   if (ctrl && (k === 'w' || k === 'W')){
     e.preventDefault();
     suppressClose = true;   // 若浏览器仍要关闭页面，beforeunload 会拦截
     closeTab(activeTabId);
     return;
   }
-  if (ctrl && (k === 'o' || k === 'O')){ e.preventDefault(); $('fileInput').click(); return; }
+  if (alt && (k === 'w' || k === 'W')){ e.preventDefault(); closeTab(activeTabId); return; }   // Alt+W 可靠
+  if (ctrl && (k === 'o' || k === 'O')){ e.preventDefault(); $('fileInput').click(); return; }  // 尽力而为
+  if (alt && (k === 'o' || k === 'O')){ e.preventDefault(); $('fileInput').click(); return; }   // Alt+O 可靠
 }
 window.addEventListener('keydown', handleKeys, true);     // 捕获阶段
 document.addEventListener('keydown', handleKeys, true);   // 双保险
@@ -988,8 +878,6 @@ function init(){
   $('shareBtn').addEventListener('click', shareCode);
   $('runBtn').addEventListener('click', runAll);
   $('addCaseBtn').addEventListener('click', () => addCase('', ''));
-  $('fetchBtn').addEventListener('click', fetchCases);
-  $('fetchUrl').addEventListener('keydown', e => { if (e.key === 'Enter') fetchCases(); });
   $('backendSel').addEventListener('change', scheduleSave);
   $('compilerSel').addEventListener('change', scheduleSave);
   $('argsInput').addEventListener('input', scheduleSave);
@@ -1019,8 +907,6 @@ window.__cases = () => cases;
 window.__tabs = () => tabs;
 window.__setCode = setCode;
 window.__buildShareUrl = buildShareUrl;
-window.__parsers = { parseAtCoder, parseCF, parseGeneric, decodeEntities };
-window.__fetchCases = fetchCases;
 window.__setUploadTarget = (i, field) => { caseUploadTarget = { i, field }; };
 </script>
 </body>
