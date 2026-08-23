@@ -86,6 +86,7 @@ function buildSandbox(){
   const { s, doc, win } = buildSandbox();
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   const code = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  ok('overlay/dialog CSS defined', html.indexOf('.overlay{') >= 0 && html.indexOf('.overlay .dialog{') >= 0, 'panel would be invisible without it');
   try {
     vm.createContext(s);
     vm.runInContext(code, s);
@@ -156,6 +157,14 @@ function buildSandbox(){
   const b64 = sParam.replace(/-/g, '+').replace(/_/g, '/');
   const data = JSON.parse(decodeURIComponent(escape(atob(b64 + '='.repeat((4 - b64.length % 4) % 4)))));
   ok('share roundtrip preserves code', data.c.indexOf('SHARED = 777') >= 0, 'name=' + data.n);
+
+  // 分享弹窗（点击 📤 → 弹窗展示链接 + 复制按钮）
+  (doc.getElementById('shareBtn')._handlers.click || []).forEach(fn => fn());
+  ok('share dialog shows URL', !doc.getElementById('shareScreen').classList.contains('hidden') && s.window.__shareUrl().indexOf('?share=') >= 0, (s.window.__shareUrl() || '').slice(0, 50));
+  (doc.getElementById('shareCopyBtn')._handlers.click || []).forEach(fn => fn());
+  ok('share copy button works', (doc.getElementById('statusText').textContent || '').indexOf('已复制') >= 0, doc.getElementById('statusText').textContent);
+  (doc.getElementById('shareCloseBtn')._handlers.click || []).forEach(fn => fn());
+  ok('share dialog closes', doc.getElementById('shareScreen').classList.contains('hidden'));
 
   // 用例上传（大样例本地文件）
   s.window.__setUploadTarget(0, 'input');

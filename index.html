@@ -108,6 +108,25 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
 .tplRow .tbtn:hover{border-color:var(--acc2);color:#fff;}
 .tplRow .tbtn.del:hover{border-color:var(--red);color:var(--red);}
 .tplEmpty{color:var(--fg2);font-size:12px;padding:8px 4px;text-align:left;}
+/* ---- 弹窗 / 对话框（overlay + dialog 样式此前缺失，导致模板/分享面板不可见） ---- */
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:50;
+  background:rgba(8,12,18,0.6);}
+.overlay.hidden{display:none;}
+.overlay .dialog{background:#1f1f22;border:1px solid var(--border);border-radius:14px;
+  padding:22px 26px;text-align:center;max-width:600px;color:var(--fg);
+  box-shadow:0 12px 40px rgba(0,0,0,.55);max-height:92vh;overflow:auto;}
+.overlay h2{font-size:20px;color:#fff;margin-bottom:6px;}
+.muted{color:var(--fg2);font-size:12px;}
+.lbTitle{font-size:14px;font-weight:bold;color:#ffe27a;margin:14px 0 4px;text-align:left;}
+.row{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:14px;flex-wrap:wrap;}
+.bigBtn{margin-top:12px;font-size:15px;padding:9px 26px;border-radius:10px;border:none;
+  background:linear-gradient(135deg,#ff8ac2,#ff5a8f);color:#fff;cursor:pointer;font-weight:bold;
+  box-shadow:0 4px 18px rgba(255,90,143,.4);font-family:inherit;display:inline-block;text-decoration:none;}
+.bigBtn:hover{filter:brightness(1.12);}
+input.txt{background:#1a1a1a;border:1px solid var(--border);color:var(--fg);border-radius:6px;
+  padding:8px 10px;font-size:13px;outline:none;}
+input.txt:focus{border-color:var(--acc2);}
+#shareUrl{width:100%;text-align:left;margin-top:10px;}
 /* ---- 拖拽提示 ---- */
 #dropHint{position:fixed;inset:0;background:rgba(14,99,156,.25);display:none;align-items:center;
   justify-content:center;z-index:100;pointer-events:none;border:3px dashed var(--acc2);}
@@ -171,7 +190,19 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
     <div id="tplBuiltin" class="tplList"></div>
     <div class="lbTitle">我的模板</div>
     <div id="tplMine" class="tplList"></div>
-    <div class="row"><button class="bigBtn" id="tplCloseBtn" style="background:linear-gradient(135deg,#8a93a6,#5a6272);box-shadow:none;">关闭</button></div>
+    <div class="row"><button id="tplCloseBtn" class="bigBtn" style="background:linear-gradient(135deg,#8a93a6,#5a6272);box-shadow:none;">关闭</button></div>
+  </div>
+</div>
+<div id="shareScreen" class="overlay hidden">
+  <div class="dialog" style="min-width:480px;">
+    <h2>🔗 分享代码</h2>
+    <p class="muted" style="margin:8px 0;">链接包含代码与全部测试用例，好友打开即自动加载</p>
+    <input id="shareUrl" class="txt" readonly spellcheck="false">
+    <div class="row">
+      <button id="shareCopyBtn" class="bigBtn">复制链接</button>
+      <a id="shareOpenLink" class="bigBtn" style="background:linear-gradient(135deg,#3a7bff,#5ac8ff);box-shadow:0 4px 18px rgba(90,150,255,.4);" target="_blank" rel="noopener">打开预览</a>
+      <button id="shareCloseBtn" class="bigBtn" style="background:linear-gradient(135deg,#8a93a6,#5a6272);box-shadow:none;">关闭</button>
+    </div>
   </div>
 </div>
 <input type="file" id="fileInput" multiple hidden>
@@ -788,8 +819,12 @@ function saveTemplates(){
   try { localStorage.setItem(TPL_LS_KEY, JSON.stringify(userTemplates)); } catch (e) {}
 }
 function openTemplates(){
-  renderTemplates();
-  $('tplScreen').classList.remove('hidden');
+  try {
+    renderTemplates();
+    $('tplScreen').classList.remove('hidden');
+  } catch (e) {
+    setStatus('⚠ 模板面板出错: ' + e.message);
+  }
 }
 function closeTemplates(){ $('tplScreen').classList.add('hidden'); }
 function renderTemplates(){
@@ -871,10 +906,27 @@ function buildShareUrl(){
   return location.origin + location.pathname + '?share=' + encodeURIComponent(b64url);
 }
 function shareCode(){
-  const url = buildShareUrl();
-  if (!url) return;
-  copyText(url);
-  setStatus('✓ 分享链接已复制');
+  try {
+    const url = buildShareUrl();
+    if (!url){ setStatus('⚠ 当前没有可分享的代码'); return; }
+    $('shareUrl').value = url;
+    $('shareOpenLink').href = url;
+    $('shareScreen').classList.remove('hidden');
+    copyText(url);   // 顺手直接复制，失败也不影响弹窗展示
+  } catch (e) {
+    setStatus('⚠ 分享失败: ' + e.message);
+  }
+}
+function shareCopyNow(){
+  const ta = $('shareUrl');
+  ta.focus();
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  if (!ok && navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ta.value).then(() => ok = true).catch(() => {});
+  }
+  setStatus(ok ? '✓ 链接已复制' : '已选中链接，请按 Ctrl+C 复制');
 }
 function copyText(txt){
   if (navigator.clipboard && navigator.clipboard.writeText){
@@ -1083,6 +1135,8 @@ function init(){
   $('newTabBtn').addEventListener('click', () => newTab('untitled' + (idSeq) + '.cpp'));
   $('openBtn').addEventListener('click', () => $('fileInput').click());
   $('shareBtn').addEventListener('click', shareCode);
+  $('shareCopyBtn').addEventListener('click', shareCopyNow);
+  $('shareCloseBtn').addEventListener('click', () => $('shareScreen').classList.add('hidden'));
   $('tplBtn').addEventListener('click', openTemplates);
   $('tplSaveBtn').addEventListener('click', saveCurrentTemplate);
   $('tplCloseBtn').addEventListener('click', closeTemplates);
@@ -1123,6 +1177,8 @@ window.__saveCurrentTemplate = saveCurrentTemplate;
 window.__insertTemplate = insertTemplate;
 window.__newFromTemplate = newFromTemplate;
 window.__openTemplates = openTemplates;
+window.__shareUrl = () => $('shareUrl').value;
+window.__shareCopyNow = shareCopyNow;
 </script>
 </body>
 </html>
