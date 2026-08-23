@@ -152,6 +152,7 @@ function buildSandbox(){
   doc.getElementById('timeLimit').value = '10000';
 
   // 栈提升：深递归 50000×4KB=200MB 栈需求（默认 8MB 会段错误，提升后应通过）
+  doc.getElementById('timeLimit').value = '30000';   // Wandbox 排队可能较慢，放宽测试时限
   s.window.__setCode('#include <bits/stdc++.h>\nusing namespace std;\nvolatile int sink;\nvoid dfs(int dep){ char buf[4096]; buf[0]=1; if(dep<=0) return; dfs(dep-1); sink=buf[0]; }\nint main(){ dfs(50000); cout << "OK " << sink << "\\n"; return 0; }');
   cs.length = 0;
   cs.push({ input: '', expected: 'OK 1', result: null, actual: '', time: null });
@@ -160,22 +161,65 @@ function buildSandbox(){
   while (s.window.__app().running && Date.now() < dl) await sleep(200);
   ok('stack boost: deep recursion passes (512MB)', s.window.__cases()[0].result === 'pass', 'r=' + s.window.__cases()[0].result + ' actual=' + (s.window.__cases()[0].actual || '').slice(0, 40));
 
-  // 分享链接 roundtrip
+  // 分享链接 roundtrip（自动选最短编码）
   s.window.__setCode('int SHARED = 777;');
   const url = s.window.__buildShareUrl();
   ok('share url built', url.indexOf('?share=') >= 0, url.slice(0, 60) + '…');
   const sParam = new URLSearchParams(url.split('?')[1]).get('share');
-  const b64 = sParam.replace(/-/g, '+').replace(/_/g, '/');
-  const data = JSON.parse(decodeURIComponent(escape(atob(b64 + '='.repeat((4 - b64.length % 4) % 4)))));
-  ok('share roundtrip preserves code', data.c.indexOf('SHARED = 777') >= 0, 'name=' + data.n);
+  // 短代码 → base64 更短（b64 前缀）
+  ok('tiny code uses b64 encoding', sParam.indexOf('b64') === 0, sParam.slice(0, 8));
+  const dec = sParam.indexOf('lz') === 0
+    ? JSON.parse(s.LZString.decompressFromEncodedURIComponent(sParam.slice(2)))
+    : JSON.parse(decodeURIComponent(escape(atob(sParam.slice(3)))));
+  ok('share roundtrip preserves code', dec.c.indexOf('SHARED = 777') >= 0, 'name=' + dec.n);
+  // 长代码 → LZ 更短（lz 前缀），且明显短于 base64
+  const bigCode = Array.from({ length: 60 }, (_, i) => 'int f' + i + '(int x){ return x * ' + i + ' + 1; }').join('\n');
+  s.window.__setCode(bigCode);
+  const urlBig = s.window.__buildShareUrl();
+  const sBig = new URLSearchParams(urlBig.split('?')[1]).get('share');
+  ok('long code uses lz encoding', sBig.indexOf('lz') === 0, sBig.slice(0, 8));
+  const b64Len = btoa(unescape(encodeURIComponent(JSON.stringify({ n: 'x.cpp', c: bigCode, s: [] })))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '').length;
+  ok('lz shorter than base64 for long code', sBig.length - 2 < b64Len, 'lz=' + (sBig.length - 2) + ' b64=' + b64Len);
+  s.window.__setCode('int SHARED = 777;');
 
   // 分享弹窗（点击 📤 → 弹窗展示链接 + 复制按钮）
+  const sc2 = s.window.__cases();
+  sc2.length = 0;
+  sc2.push({ input: '5 5', expected: '10', result: null, actual: '', time: null });
+  sc2.push({ input: '1 1', expected: '2', result: null, actual: '', time: null });
   (doc.getElementById('shareBtn')._handlers.click || []).forEach(fn => fn());
   ok('share dialog shows URL', !doc.getElementById('shareScreen').classList.contains('hidden') && s.window.__shareUrl().indexOf('?share=') >= 0, (s.window.__shareUrl() || '').slice(0, 50));
   (doc.getElementById('shareCopyBtn')._handlers.click || []).forEach(fn => fn());
   ok('share copy button works', (doc.getElementById('statusText').textContent || '').indexOf('已复制') >= 0, doc.getElementById('statusText').textContent);
+  (doc.getElementById('shareCopyCodeBtn')._handlers.click || []).forEach(fn => fn());
+  ok('share copy-code button works', (doc.getElementById('statusText').textContent || '').indexOf('代码已复制') >= 0, doc.getElementById('statusText').textContent);
   (doc.getElementById('shareCloseBtn')._handlers.click || []).forEach(fn => fn());
   ok('share dialog closes', doc.getElementById('shareScreen').classList.contains('hidden'));
+
+  // 分享链接端到端：新开一个实例（模拟好友打开链接）→ loadShare 应加载代码与用例
+  const sharedUrl = s.window.__shareUrl();
+  const store2 = store;
+  const B2 = buildSandbox();
+  B2.s.location.search = sharedUrl.indexOf('?') >= 0 ? sharedUrl.slice(sharedUrl.indexOf('?')) : '';
+  vm.createContext(B2.s);
+  vm.runInContext(code, B2.s);
+  (B2.win._handlers['load'] || []).forEach(fn => fn());
+  const app2 = B2.s.window.__app();
+  ok('share link opens in fresh instance', app2.tabCount >= 1 && app2.code.indexOf('SHARED = 777') >= 0,
+    'tabs=' + app2.tabCount + ' has=' + app2.code.indexOf('SHARED = 777'));
+  ok('shared cases loaded', B2.s.window.__cases().length === 2, 'cases=' + B2.s.window.__cases().length);
+
+  // 旧格式兼容：base64 分享链接仍能打开
+  const oldData = { n: 'old.cpp', c: 'int LEGACY = 1;', s: [{ i: '2 3', o: '5' }] };
+  const oldB64url = btoa(unescape(encodeURIComponent(JSON.stringify(oldData)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const B3 = buildSandbox();
+  B3.s.location.search = '?share=' + oldB64url;
+  vm.createContext(B3.s);
+  vm.runInContext(code, B3.s);
+  (B3.win._handlers['load'] || []).forEach(fn => fn());
+  ok('legacy base64 share link opens', B3.s.window.__app().code.indexOf('LEGACY = 1') >= 0,
+    'has=' + B3.s.window.__app().code.indexOf('LEGACY = 1'));
+  ok('legacy shared cases loaded', B3.s.window.__cases().length === 1 && B3.s.window.__cases()[0].expected === '5');
 
   // 用例上传（大样例本地文件）
   s.window.__setUploadTarget(0, 'input');

@@ -199,8 +199,10 @@ input.txt:focus{border-color:var(--acc2);}
     <h2>🔗 分享代码</h2>
     <p class="muted" style="margin:8px 0;">链接包含代码与全部测试用例，好友打开即自动加载</p>
     <input id="shareUrl" class="txt" readonly spellcheck="false">
+    <div id="shareWarn" class="muted" style="margin-top:8px;display:none;color:#ffb4b4;"></div>
     <div class="row">
       <button id="shareCopyBtn" class="bigBtn">复制链接</button>
+      <button id="shareCopyCodeBtn" class="bigBtn" style="background:linear-gradient(135deg,#6fd95f,#3aa84a);box-shadow:0 4px 18px rgba(80,200,90,.4);" title="链接过长被聊天软件截断时，改用直接复制代码">复制代码</button>
       <a id="shareOpenLink" class="bigBtn" style="background:linear-gradient(135deg,#3a7bff,#5ac8ff);box-shadow:0 4px 18px rgba(90,150,255,.4);" target="_blank" rel="noopener">打开预览</a>
       <button id="shareCloseBtn" class="bigBtn" style="background:linear-gradient(135deg,#8a93a6,#5a6272);box-shadow:none;">关闭</button>
     </div>
@@ -211,6 +213,8 @@ input.txt:focus{border-color:var(--acc2);}
 <script src="editor.bundle.js"></script>
 <script>
 "use strict";
+/* LZ-String：分享链接压缩（MIT，pieroxy） */
+var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",n="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$",e={};function t(r,o){if(!e[r]){e[r]={};for(var n=0;n<r.length;n++)e[r][r.charAt(n)]=n}return e[r][o]}var i={compressToBase64:function(r){if(null==r)return"";var n=i._compress(r,6,function(r){return o.charAt(r)});switch(n.length%4){default:case 0:return n;case 1:return n+"===";case 2:return n+"==";case 3:return n+"="}},decompressFromBase64:function(r){return null==r?"":""==r?null:i._decompress(r.length,32,function(n){return t(o,r.charAt(n))})},compressToUTF16:function(o){return null==o?"":i._compress(o,15,function(o){return r(o+32)})+" "},decompressFromUTF16:function(r){return null==r?"":""==r?null:i._decompress(r.length,16384,function(o){return r.charCodeAt(o)-32})},compressToUint8Array:function(r){for(var o=i.compress(r),n=new Uint8Array(2*o.length),e=0,t=o.length;e<t;e++){var s=o.charCodeAt(e);n[2*e]=s>>>8,n[2*e+1]=s%256}return n},decompressFromUint8Array:function(o){if(null==o)return i.decompress(o);for(var n=new Array(o.length/2),e=0,t=n.length;e<t;e++)n[e]=256*o[2*e]+o[2*e+1];var s=[];return n.forEach(function(o){s.push(r(o))}),i.decompress(s.join(""))},compressToEncodedURIComponent:function(r){return null==r?"":i._compress(r,6,function(r){return n.charAt(r)})},decompressFromEncodedURIComponent:function(r){return null==r?"":""==r?null:(r=r.replace(/ /g,"+"),i._decompress(r.length,32,function(o){return t(n,r.charAt(o))}))},compress:function(o){return i._compress(o,16,function(o){return r(o)})},_compress:function(r,o,n){if(null==r)return"";var e,t,i,s={},u={},a="",p="",c="",l=2,f=3,h=2,d=[],m=0,v=0;for(i=0;i<r.length;i+=1)if(a=r.charAt(i),Object.prototype.hasOwnProperty.call(s,a)||(s[a]=f++,u[a]=!0),p=c+a,Object.prototype.hasOwnProperty.call(s,p))c=p;else{if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++),s[p]=f++,c=String(a)}if(""!==c){if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++)}for(t=2,e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;for(;;){if(m<<=1,v==o-1){d.push(n(m));break}v++}return d.join("")},decompress:function(r){return null==r?"":""==r?null:i._decompress(r.length,32768,function(o){return r.charCodeAt(o)})},_decompress:function(o,n,e){var t,i,s,u,a,p,c,l=[],f=4,h=4,d=3,m="",v=[],g={val:e(0),position:n,index:1};for(t=0;t<3;t+=1)l[t]=t;for(s=0,a=Math.pow(2,2),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 2:return""}for(l[3]=c,i=c,v.push(c);;){if(g.index>o)return"";for(s=0,a=Math.pow(2,d),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(c=s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 2:return v.join("")}if(0==f&&(f=Math.pow(2,d),d++),l[c])m=l[c];else{if(c!==h)return null;m=i+i.charAt(0)}v.push(m),l[h++]=i+m.charAt(0),i=m,0==--f&&(f=Math.pow(2,d),d++)}}};return i}();"function"==typeof define&&define.amd?define(function(){return LZString}):"undefined"!=typeof module&&null!=module?module.exports=LZString:"undefined"!=typeof angular&&null!=angular&&angular.module("LZString",[]).factory("LZString",function(){return LZString});
 /* ============================================================
  * C++20 在线编译器 v2
  * 快捷键: F9 样例 / Ctrl+Enter 自定义输入 / Ctrl+S 保存
@@ -960,9 +964,12 @@ function buildShareUrl(){
   const t = currentTab();
   if (!t) return '';
   const data = { n: t.name, c: getCode(), s: cases.map(x => ({ i: x.input, o: x.expected })) };
-  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-  const b64url = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return location.origin + location.pathname + '?share=' + encodeURIComponent(b64url);
+  const json = JSON.stringify(data);
+  // 自动选最短编码：LZ 压缩适合长代码，base64 适合极短代码
+  const lz = LZString.compressToEncodedURIComponent(json);
+  const b64 = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const enc = lz.length < b64.length ? 'lz' + lz : 'b64' + b64;
+  return location.origin + location.pathname + '?share=' + enc;
 }
 function shareCode(){
   try {
@@ -970,11 +977,22 @@ function shareCode(){
     if (!url){ setStatus('⚠ 当前没有可分享的代码'); return; }
     $('shareUrl').value = url;
     $('shareOpenLink').href = url;
+    const warn = $('shareWarn');
+    if (url.length > 1800){
+      warn.style.display = '';
+      warn.textContent = '⚠ 链接较长（' + url.length + ' 字符），在微信等软件可能被截断——建议用「复制代码」发送，或发送后请对方完整复制链接';
+    } else {
+      warn.style.display = 'none';
+    }
     $('shareScreen').classList.remove('hidden');
     copyText(url);   // 顺手直接复制，失败也不影响弹窗展示
   } catch (e) {
     setStatus('⚠ 分享失败: ' + e.message);
   }
+}
+function shareCopyCode(){
+  copyText(getCode());
+  setStatus('✓ 代码已复制，可直接粘贴发送');
 }
 function shareCopyNow(){
   const ta = $('shareUrl');
@@ -1005,10 +1023,32 @@ function loadShare(){
   let s = null;
   try { s = new URLSearchParams(location.search).get('share'); } catch (e) {}
   if (!s) return;
+  let data = null;
+  // 新格式：lz/b64 前缀（自动选最短编码）
   try {
-    const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
-    const data = JSON.parse(decodeURIComponent(escape(atob(padded))));
+    if (s.indexOf('lz') === 0){
+      const json = LZString.decompressFromEncodedURIComponent(s.slice(2));
+      if (json) data = JSON.parse(json);
+    } else if (s.indexOf('b64') === 0){
+      data = JSON.parse(decodeURIComponent(escape(atob(s.slice(3)))));
+    }
+  } catch (e) {}
+  // 旧格式兼容：无前缀 → 依次尝试 LZ / base64
+  if (!data){
+    try {
+      const json = LZString.decompressFromEncodedURIComponent(s);
+      if (json) data = JSON.parse(json);
+    } catch (e) {}
+  }
+  if (!data){
+    try {
+      const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+      data = JSON.parse(decodeURIComponent(escape(atob(padded))));
+    } catch (e) {}
+  }
+  if (!data){ setStatus('分享链接无效'); return; }
+  try {
     const name = data.n || 'shared.cpp';
     const code = data.c || '';
     if (tabs.length && !getCode().trim()){
@@ -1198,6 +1238,7 @@ function init(){
   $('openBtn').addEventListener('click', () => $('fileInput').click());
   $('shareBtn').addEventListener('click', shareCode);
   $('shareCopyBtn').addEventListener('click', shareCopyNow);
+  $('shareCopyCodeBtn').addEventListener('click', shareCopyCode);
   $('shareCloseBtn').addEventListener('click', () => $('shareScreen').classList.add('hidden'));
   $('tplBtn').addEventListener('click', openTemplates);
   $('tplSaveBtn').addEventListener('click', saveCurrentTemplate);
