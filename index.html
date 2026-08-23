@@ -973,19 +973,27 @@ function buildShareUrl(){
 }
 function shareCode(){
   try {
-    const url = buildShareUrl();
+    const url = buildShareUrl();   // 压缩长链接（立即可用，短链接生成前的后备）
     if (!url){ setStatus('⚠ 当前没有可分享的代码'); return; }
     $('shareUrl').value = url;
     $('shareOpenLink').href = url;
-    const warn = $('shareWarn');
-    if (url.length > 1800){
-      warn.style.display = '';
-      warn.textContent = '⚠ 链接较长（' + url.length + ' 字符），在微信等软件可能被截断——建议用「复制代码」发送，或发送后请对方完整复制链接';
-    } else {
-      warn.style.display = 'none';
-    }
     $('shareScreen').classList.remove('hidden');
-    copyText(url);   // 顺手直接复制，失败也不影响弹窗展示
+    const warn = $('shareWarn');
+    warn.style.display = '';
+    warn.style.color = '';
+    warn.textContent = '⏳ 正在生成短链接（约 5 秒）…完成后点「复制链接」';
+    // 后台生成短链接（存到 Wandbox，链接 ~65 字符，微信不会截断）
+    buildShortUrl().then(short => {
+      if (short){
+        $('shareUrl').value = short;
+        $('shareOpenLink').href = short;
+        warn.style.color = '#9fe89a';
+        warn.textContent = '✓ 短链接已生成（' + short.length + ' 字符）— 点「复制链接」即可发送';
+      } else {
+        warn.style.color = '#ffb4b4';
+        warn.textContent = '⚠ 短链接生成失败，当前为压缩链接' + (url.length > 1800 ? '（较长，建议用「复制代码」）' : '（可直接发送）');
+      }
+    });
   } catch (e) {
     setStatus('⚠ 分享失败: ' + e.message);
   }
@@ -1019,12 +1027,64 @@ function fallbackCopy(txt){
   try { document.execCommand('copy'); } catch (e) {}
   ta.remove();
 }
+/* 应用分享数据（代码 + 用例）到当前实例 */
+function applyShared(data){
+  const name = data.n || 'shared.cpp';
+  const code = data.c || '';
+  if (tabs.length && !getCode().trim()){
+    renameTab(activeTabId, name);
+    setCode(code);
+  } else {
+    newTab(name, code);
+  }
+  if (Array.isArray(data.s)){
+    cases = data.s.map(x => ({ input: x.i || '', expected: x.o || '', result: null, actual: '', time: null }));
+    renderCases();
+  }
+}
+/* 短链接：载荷 URL 编码后藏进代码注释，存到 Wandbox permlink（返回 16 位短 ID） */
+async function buildShortUrl(){
+  const t = currentTab();
+  if (!t) return null;
+  const data = { n: t.name, c: getCode(), s: cases.map(x => ({ i: x.input, o: x.expected })) };
+  const encoded = encodeURIComponent(JSON.stringify(data));   // URL 编码后不含 */，可安全放进注释
+  const code = 'int main(){return 0;}\n/*' + encoded + '*/';
+  try {
+    const r = await fetch('https://wandbox.org/api/compile.json', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0 Safari/537.36' },
+      body: JSON.stringify({ code, compiler: 'gcc-head', stdin: '', options: '-std=c++20', save: true })
+    });
+    const j = await r.json();
+    if (j.permlink) return location.origin + location.pathname + '?w=' + j.permlink;
+  } catch (e) {}
+  return null;
+}
 function loadShare(){
-  let s = null;
-  try { s = new URLSearchParams(location.search).get('share'); } catch (e) {}
+  let search = '';
+  try { search = location.search; } catch (e) {}
+  const params = new URLSearchParams(search);
+  // 短链接格式：?w=<wandbox permlink id>
+  const w = params.get('w');
+  if (w){
+    fetch('https://wandbox.org/api/permlink/' + w)
+      .then(r => r.json())
+      .then(j => {
+        const code = (j.parameter && j.parameter.code) || '';
+        const a = code.lastIndexOf('/*'), b = code.lastIndexOf('*/');
+        if (a < 0 || b < a) throw new Error('bad payload');
+        const data = JSON.parse(decodeURIComponent(code.slice(a + 2, b).trim()));
+        applyShared(data);
+        setStatus('✓ 已加载分享的代码与用例（短链接）');
+        try { history.replaceState(null, '', location.pathname); } catch (e) {}
+      })
+      .catch(() => setStatus('⚠ 短链接内容加载失败（网络或链接无效）'));
+    return;
+  }
+  // 压缩链接格式：?share=<lz|b64 前缀，或旧格式无前缀>
+  const s = params.get('share');
   if (!s) return;
   let data = null;
-  // 新格式：lz/b64 前缀（自动选最短编码）
   try {
     if (s.indexOf('lz') === 0){
       const json = LZString.decompressFromEncodedURIComponent(s.slice(2));
@@ -1033,7 +1093,6 @@ function loadShare(){
       data = JSON.parse(decodeURIComponent(escape(atob(s.slice(3)))));
     }
   } catch (e) {}
-  // 旧格式兼容：无前缀 → 依次尝试 LZ / base64
   if (!data){
     try {
       const json = LZString.decompressFromEncodedURIComponent(s);
@@ -1049,18 +1108,7 @@ function loadShare(){
   }
   if (!data){ setStatus('分享链接无效'); return; }
   try {
-    const name = data.n || 'shared.cpp';
-    const code = data.c || '';
-    if (tabs.length && !getCode().trim()){
-      renameTab(activeTabId, name);
-      setCode(code);
-    } else {
-      newTab(name, code);
-    }
-    if (Array.isArray(data.s)){
-      cases = data.s.map(x => ({ input: x.i || '', expected: x.o || '', result: null, actual: '', time: null }));
-      renderCases();
-    }
+    applyShared(data);
     setStatus('✓ 已加载分享的代码与用例');
     try { history.replaceState(null, '', location.pathname); } catch (e) {}
   } catch (e) {
@@ -1282,6 +1330,7 @@ window.__newFromTemplate = newFromTemplate;
 window.__openTemplates = openTemplates;
 window.__shareUrl = () => $('shareUrl').value;
 window.__shareCopyNow = shareCopyNow;
+window.__buildShortUrl = buildShortUrl;
 </script>
 </body>
 </html>

@@ -221,6 +221,28 @@ function buildSandbox(){
     'has=' + B3.s.window.__app().code.indexOf('LEGACY = 1'));
   ok('legacy shared cases loaded', B3.s.window.__cases().length === 1 && B3.s.window.__cases()[0].expected === '5');
 
+  // 短链接端到端：真实 Wandbox 存储 + 新实例加载（~65 字符链接）
+  s.window.__setCode('int SHORTY = 42;');
+  const scShort = s.window.__cases();
+  scShort.length = 0;
+  scShort.push({ input: '1 1', expected: '2', result: null, actual: '', time: null });
+  const shortUrl = await s.window.__buildShortUrl();
+  ok('short url generated via Wandbox', !!shortUrl && shortUrl.indexOf('?w=') >= 0 && shortUrl.length < 100, (shortUrl || 'null').slice(0, 90));
+  if (shortUrl){
+    const B4 = buildSandbox();
+    B4.s.location.search = shortUrl.slice(shortUrl.indexOf('?'));
+    vm.createContext(B4.s);
+    vm.runInContext(code, B4.s);
+    (B4.win._handlers['load'] || []).forEach(fn => fn());
+    let dl2 = Date.now() + 30000, loaded = false;
+    while (Date.now() < dl2){
+      if (B4.s.window.__app().code.indexOf('SHORTY = 42') >= 0){ loaded = true; break; }
+      await sleep(300);
+    }
+    ok('short link loads code in fresh instance', loaded, 'status=' + B4.doc.getElementById('statusText').textContent);
+    ok('short link loads cases', B4.s.window.__cases().length === 1 && B4.s.window.__cases()[0].expected === '2');
+  }
+
   // 用例上传（大样例本地文件）
   s.window.__setUploadTarget(0, 'input');
   (doc.getElementById('caseFileInput')._handlers.change || []).forEach(fn => fn({ target: { files: [{ name: 'big.in', _content: '1\n2\n3\n'.repeat(500) }], value: '' } }));
