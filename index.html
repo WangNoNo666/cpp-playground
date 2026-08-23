@@ -393,10 +393,27 @@ async function fetchText(url){
     const r = await fetch(url, { headers: { 'Accept': 'text/html' } });
     if (r.ok){ const t = await r.text(); if (t && t.length > 500) return { text: t, via: '直连' }; }
   } catch (e) {}
-  try {
-    const r = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
-    if (r.ok){ const t = await r.text(); if (t && t.length > 500) return { text: t, via: '代理' }; }
-  } catch (e) {}
+  // CORS 代理兜底（依次尝试）
+  const proxies = [
+    u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    u => 'https://api.allorigins.win/get?url=' + encodeURIComponent(u),
+    u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u)
+  ];
+  for (const mk of proxies){
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 12000);
+      const r = await fetch(mk(url), { signal: ctl.signal });
+      clearTimeout(timer);
+      if (r.ok){
+        let t = await r.text();
+        if (t && t.charAt(0) === '{'){
+          try { const j = JSON.parse(t); if (j.contents) t = j.contents; } catch (e) {}
+        }
+        if (t && t.length > 500) return { text: t, via: '代理' };
+      }
+    } catch (e) {}
+  }
   return null;
 }
 async function fetchCases(){
@@ -407,12 +424,20 @@ async function fetchCases(){
   setStatus('抓取题目 ' + url + ' …');
   const got = await fetchText(url);
   btn.disabled = false;
-  if (!got){ setStatus('⚠ 抓取失败：网站不可达或不允许跨域'); return; }
+  if (!got){ setStatus('⚠ 抓取失败：网站不可达或跨域受限（已尝试直连+3个代理）'); return; }
+  if (/codeforces\.com/i.test(url) && /Just a moment|cf-challenge|Cloudflare/i.test(got.text)){
+    setStatus('⚠ Codeforces 有反爬验证，代理无法获取；请改用 AtCoder 题目或手动添加用例');
+    return;
+  }
   let parsed = [];
   if (/atcoder\.jp/i.test(url)) parsed = parseAtCoder(got.text);
   else if (/codeforces\.com/i.test(url)) parsed = parseCF(got.text);
   else parsed = parseGeneric(got.text);
-  if (!parsed.length){ setStatus('⚠ 未能提取样例（站点可能改版/需登录）；' + got.via); return; }
+  if (!parsed.length){
+    const frag = got.text.replace(/\s+/g, ' ').slice(0, 70);
+    setStatus('⚠ 未能提取样例（' + got.via + '），页面片段: ' + frag + ' …');
+    return;
+  }
   if (cases.length && !confirm('已有 ' + cases.length + ' 个用例，是否替换为抓取到的 ' + parsed.length + ' 个样例？')){
     setStatus('已取消，未替换'); return;
   }
@@ -531,6 +556,84 @@ async function compileRun(code, stdin, limitMs){
   return { backend: lastErr.backend, ...lastErr };
 }
 function norm(s){ return String(s || '').replace(/\r/g, '').replace(/\s+$/g, '').replace(/^\s+/g, ''); }
+function escStr(s){ return String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r/g, '').replace(/\n/g, '\\n'); }
+
+/* ---------------- 批量运行器（一次编译跑全部用例，返回真实耗时/内存） ---------------- */
+function buildBatchSource(userCode, cases){
+  let renamed = userCode;
+  let call = 'petalio_user_main()';
+  const mVoid = /\bint\s+main\s*\(\s*void\s*\)/;
+  const mNoArgs = /\bint\s+main\s*\(\s*\)/;
+  const mArgs = /\bint\s+main\s*\([^)]*\)/;
+  if (mVoid.test(renamed)) renamed = renamed.replace(mVoid, 'int petalio_user_main()');
+  else if (mNoArgs.test(renamed)) renamed = renamed.replace(mNoArgs, 'int petalio_user_main()');
+  else if (mArgs.test(renamed)){
+    renamed = renamed.replace(mArgs, 'int petalio_user_main(int argc, char** argv)');
+    call = 'petalio_user_main(0, nullptr)';
+  } else return null;
+  const ins = cases.map(c => JSON.stringify(escStr(c.input)));
+  const exps = cases.map(c => JSON.stringify(escStr(c.expected)));
+  return `#include <iostream>
+#include <sstream>
+#include <string>
+#include <chrono>
+#include <sys/resource.h>
+using namespace std;
+static string trim2(const string& s){
+  size_t a = s.find_first_not_of(" \\t\\r\\n");
+  size_t b = s.find_last_not_of(" \\t\\r\\n");
+  return a == string::npos ? "" : s.substr(a, b - a + 1);
+}
+${renamed}
+int main(){
+  const char* INS[] = {${ins.join(',')}};
+  const char* EXP[] = {${exps.join(',')}};
+  int n = ${cases.length};
+  for (int i = 0; i < n; i++){
+    auto t0 = chrono::steady_clock::now();
+    istringstream iss(INS[i]);
+    streambuf* oldIn = cin.rdbuf(iss.rdbuf());
+    ostringstream oss;
+    streambuf* oldOut = cout.rdbuf(oss.rdbuf());
+    ${call};
+    cout.flush();
+    string actual = oss.str();
+    cin.rdbuf(oldIn);
+    cout.rdbuf(oldOut);
+    auto t1 = chrono::steady_clock::now();
+    double ms = chrono::duration<double, milli>(t1 - t0).count();
+    bool pass = trim2(actual) == trim2(EXP[i]);
+    cout << "[CASE " << (i + 1) << "] " << (pass ? "PASS" : "FAIL") << " time=" << (long long)ms << "ms\\n";
+    if (!pass) cout << "[OUT]\\n" << actual << "[EXP]\\n" << EXP[i] << "\\n";
+  }
+  struct rusage ru;
+  if (getrusage(RUSAGE_SELF, &ru) == 0) cout << "[MEM] " << ru.ru_maxrss << " KB\\n";
+  return 0;
+}`;
+}
+function parseBatchOutput(text){
+  const lines = (text || '').split('\n');
+  const memMatch = (text || '').match(/\[MEM\]\s*(\d+)\s*KB/);
+  const mem = memMatch ? parseInt(memMatch[1], 10) : null;
+  const cases = [];
+  let cur = null;
+  for (const line of lines){
+    const m = line.match(/^\[CASE (\d+)\] (PASS|FAIL) time=(\d+)ms$/);
+    if (m){
+      if (cur) cases.push(cur);
+      cur = { i: parseInt(m[1], 10) - 1, pass: m[2] === 'PASS', time: parseInt(m[3], 10), out: [], exp: [] };
+      continue;
+    }
+    if (cur){
+      if (line === '[OUT]'){ cur.mode = 'out'; continue; }
+      if (line === '[EXP]'){ cur.mode = 'exp'; continue; }
+      if (cur.mode === 'out') cur.out.push(line);
+      else if (cur.mode === 'exp') cur.exp.push(line);
+    }
+  }
+  if (cur) cases.push(cur);
+  return { cases, mem };
+}
 
 /* ---------------- 运行 ---------------- */
 let running = false;
@@ -544,6 +647,52 @@ async function runAll(){
   cases.forEach(c => { c.result = null; c.actual = ''; c.time = null; });
   renderCases();
   const t0 = performance.now();
+  // ---- 批量模式（≥2 用例：一次请求跑全部，含真实时间/内存） ----
+  if (cases.length >= 2){
+    let batchSrc = null, buildErr = false;
+    try { batchSrc = buildBatchSource(code, cases); } catch (e) { buildErr = true; }
+    if (batchSrc && batchSrc.length <= 60000 && !buildErr){
+      setStatus('🚀 批量编译运行：1 次请求跑 ' + cases.length + ' 个用例…（时限 ' + timeLimitMs() + 'ms）');
+      const res = await compileRun(batchSrc, '', timeLimitMs());
+      if (res.kind === 'tle'){
+        cases.forEach(c => { c.result = 'tle'; c.time = res.ms; c.actual = res.text; });
+        renderCases();
+        setStatus('⏱ 批量运行超时（> ' + timeLimitMs() + 'ms），已中止');
+        showRun('⏱ 运行超时，已自动中止\n\n' + (res.text || ''));
+        running = false; $('runBtn').disabled = false;
+        return;
+      }
+      if (res.ok){
+        const parsed = parseBatchOutput(res.text);
+        if (parsed.cases.length >= 1){
+          let pass = 0, failed = 0;
+          for (const pc of parsed.cases){
+            const c = cases[pc.i];
+            if (!c) continue;
+            c.time = pc.time;
+            if (pc.pass){ c.result = 'pass'; pass++; }
+            else { c.result = 'fail'; failed++; c.actual = '实际输出：\n' + pc.out.join('\n') + '\n期望输出：\n' + pc.exp.join('\n'); }
+          }
+          // 未解析到的用例视为失败
+          cases.forEach(c => { if (!c.result){ c.result = 'fail'; c.actual = '(该用例未在批量运行中返回)'; } });
+          if (parsed.mem) $('memText').textContent = '内存 ' + parsed.mem + ' KB';
+          const ms = Math.round(performance.now() - t0);
+          setStatus('完成: 通过 ' + pass + '/' + cases.length + (parsed.mem ? ' · 峰值内存 ' + parsed.mem + ' KB' : '') + ' · 总耗时 ' + ms + 'ms');
+          showRun(cases.map((c, i) => '用例 ' + (i + 1) + ': ' + (c.result === 'pass' ? '✓ 通过' : '✗ 失败') + (c.time != null ? ' · ' + c.time + 'ms' : '')).join('\n'));
+          renderCases();
+          running = false; $('runBtn').disabled = false;
+          return;
+        }
+      } else if (res.kind === 'compile'){
+        showCompile(res);
+        setStatus('编译失败（批量模式，行号含包装代码）· ' + res.ms + 'ms');
+        running = false; $('runBtn').disabled = false;
+        return;
+      }
+      // 其它情况（网络错误/解析失败）→ 回落到逐用例模式
+    }
+  }
+  // ---- 逐用例模式（1 个用例或批量不可用） ----
   setStatus('编译并运行样例…（时限 ' + timeLimitMs() + 'ms）');
   let pass = 0, aborted = false, timedOut = 0;
   for (let i = 0; i < cases.length && !aborted; i++){
@@ -676,7 +825,7 @@ function handleKeys(e){
   if (ctrl && (k === 'w' || k === 'W')){ e.preventDefault(); closeTab(activeTabId); return; }
   if (ctrl && (k === 'o' || k === 'O')){ e.preventDefault(); $('fileInput').click(); return; }
 }
-window.addEventListener('keydown', handleKeys);
+window.addEventListener('keydown', handleKeys, true);   // 捕获阶段：确保 Ctrl+W 等被拦截（防止关掉网页）
 
 /* ---------------- 文件保存 / 拖拽 ---------------- */
 function saveFile(){

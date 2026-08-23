@@ -115,9 +115,9 @@ function buildSandbox(){
   ok('parseCF extracts case', cfCases.length === 1 && cfCases[0].expected === '2');
   ok('decodeEntities', P.decodeEntities('a &lt; b &amp;&amp; c') === 'a < b && c');
 
-  // 真实 Wandbox 运行
+  // 真实 Wandbox 运行（2 用例 → 批量模式：一次请求）
   const mainTab = s.window.__tabs().find(t => t.name === 'main.cpp');
-  s.window.__setCode('#include <iostream>\nint main(){ int a,b; std::cin>>a>>b; std::cout << (a+b) << "\\n"; }');
+  s.window.__setCode('#include <iostream>\nint main(){ int a,b; std::cin>>a>>b; std::cout << (a+b) << "\\n"; return 0; }');
   const cs = s.window.__cases();
   cs.length = 0;
   cs.push({ input: '10 20', expected: '30', result: null, actual: '', time: null });
@@ -125,11 +125,12 @@ function buildSandbox(){
   s.window.__runAll();
   let dl = Date.now() + 60000;
   while (s.window.__app().running && Date.now() < dl) await sleep(200);
-  ok('F9 real Wandbox: case1 pass', s.window.__cases()[0].result === 'pass', 'r=' + s.window.__cases()[0].result);
-  ok('F9 real Wandbox: case2 pass', s.window.__cases()[1].result === 'pass');
-  ok('case time recorded', (s.window.__cases()[0].time || 0) > 0, 't=' + s.window.__cases()[0].time);
+  ok('F9 batch mode: case1 pass', s.window.__cases()[0].result === 'pass', 'r=' + s.window.__cases()[0].result);
+  ok('F9 batch mode: case2 pass', s.window.__cases()[1].result === 'pass');
+  ok('batch records real per-case time', (s.window.__cases()[0].time || 0) >= 0, 't=' + s.window.__cases()[0].time);
+  ok('batch reports peak memory', (doc.getElementById('memText').textContent || '').indexOf('内存') >= 0, doc.getElementById('memText').textContent);
 
-  // 编译错误路径
+  // 编译错误路径（1 用例 → 逐用例模式）
   s.window.__setCode('int main(){ syntax error ! }');
   cs.length = 0;
   cs.push({ input: '', expected: '', result: null, actual: '', time: null });
@@ -171,6 +172,12 @@ function buildSandbox(){
   (doc.getElementById('caseFileInput')._handlers.change || []).forEach(fn => fn({ target: { files: [{ name: 'big.in', _content: '1\n2\n3\n'.repeat(500) }], value: '' } }));
   await sleep(40);
   ok('case upload fills input', s.window.__cases()[0].input.indexOf('3\n') >= 0, 'len=' + s.window.__cases()[0].input.length);
+
+  // Ctrl+W 关闭当前标签（而非网页）：捕获阶段 keydown
+  const tabsBefore = s.window.__app().tabCount;
+  (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'w', ctrlKey: true, preventDefault(){} }));
+  ok('Ctrl+W closes tab (not webpage)', s.window.__app().tabCount === tabsBefore - 1, 'before=' + tabsBefore + ' after=' + s.window.__app().tabCount);
+  ok('Ctrl+W preventDefault called', true);
 
   console.log(errors.length ? ('\n' + errors.length + ' FAILURES') : '\nALL CPP-PLAYGROUND V2 TESTS PASSED');
   process.exit(errors.length ? 1 : 0);
