@@ -660,9 +660,10 @@ async function runAll(){
           // 未解析到的用例视为失败
           cases.forEach(c => { if (!c.result){ c.result = 'fail'; c.actual = '(该用例未在批量运行中返回)'; } });
           if (parsed.mem) $('memText').textContent = '内存 ' + parsed.mem + ' KB';
-          const ms = Math.round(performance.now() - t0);
-          setStatus('完成: 通过 ' + pass + '/' + cases.length + (parsed.mem ? ' · 峰值内存 ' + parsed.mem + ' KB' : '') + ' · 总耗时 ' + ms + 'ms');
-          showRun(cases.map((c, i) => '用例 ' + (i + 1) + ': ' + (c.result === 'pass' ? '✓ 通过' : '✗ 失败') + (c.time != null ? ' · ' + c.time + 'ms' : '')).join('\n'));
+          const secs = ((performance.now() - t0) / 1000).toFixed(1);
+          setStatus('完成: 通过 ' + pass + '/' + cases.length + (parsed.mem ? ' · 峰值内存 ' + parsed.mem + ' KB' : ''));
+          showRun(cases.map((c, i) => '用例 ' + (i + 1) + ': ' + (c.result === 'pass' ? '✓ 通过' : '✗ 失败') + (c.time != null ? ' · ' + c.time + 'ms' : '')).join('\n') +
+            '\n（以上为 CPU 运行时间，评测机口径；本次请求共 ' + secs + 's，含编译与网络）');
           renderCases();
           running = false; $('runBtn').disabled = false;
           return;
@@ -697,19 +698,18 @@ async function runAll(){
     } catch (e){
       res = { backend: '?', ok: false, kind: 'net', text: '运行异常: ' + e.message, ms: 0 };
     }
-    if (res.kind === 'tle'){ c.result = 'tle'; c.time = res.ms; c.actual = res.text; timedOut++; }
-    else if (res.kind === 'compile'){ showCompile(res); setStatus('编译失败 (' + res.backend + ') · ' + res.ms + 'ms', true); aborted = true; break; }
-    else if (res.kind === 'net'){ c.result = 'fail'; c.time = res.ms; c.actual = '网络错误：' + res.text; }
-    else if (res.kind === 'run'){ c.result = 'fail'; c.time = res.ms; c.actual = res.text; }
-    else if (res.ok && norm(res.text) === norm(c.expected)){ c.result = 'pass'; c.time = res.ms; pass++; }
-    else { c.result = 'fail'; c.time = res.ms; c.actual = res.ok ? (res.text || '(无输出)') + (res.err ? '\n[stderr] ' + res.err : '') : (res.text || '运行错误'); }
+    if (res.kind === 'tle'){ c.result = 'tle'; c.actual = res.text; timedOut++; }
+    else if (res.kind === 'compile'){ showCompile(res); setStatus('编译失败 (' + res.backend + ')', true); aborted = true; break; }
+    else if (res.kind === 'net'){ c.result = 'fail'; c.actual = '网络错误：' + res.text; }
+    else if (res.kind === 'run'){ c.result = 'fail'; c.actual = res.text; }
+    else if (res.ok && norm(res.text) === norm(c.expected)){ c.result = 'pass'; pass++; }
+    else { c.result = 'fail'; c.actual = res.ok ? (res.text || '(无输出)') + (res.err ? '\n[stderr] ' + res.err : '') : (res.text || '运行错误'); }
     renderCases();
   }
   if (!aborted){
-    const ms = Math.round(performance.now() - t0);
     const tleTxt = timedOut ? ' · 超时 ' + timedOut : '';
-    setStatus('完成: 通过 ' + pass + '/' + cases.length + tleTxt + ' · 总耗时 ' + ms + 'ms');
-    showRun(cases.map((c, i) => '用例 ' + (i + 1) + ': ' + (c.result === 'pass' ? '✓ 通过' : c.result === 'tle' ? '⏱ 超时' : '✗ 失败') + (c.time != null ? ' · ' + c.time + 'ms' : '')).join('\n'));
+    setStatus('完成: 通过 ' + pass + '/' + cases.length + tleTxt + '（逐用例模式）');
+    showRun(cases.map((c, i) => '用例 ' + (i + 1) + ': ' + (c.result === 'pass' ? '✓ 通过' : c.result === 'tle' ? '⏱ 超时' : '✗ 失败')).join('\n') + '\n（逐用例模式，未提供 CPU 时间）');
   }
   running = false;
   $('runBtn').disabled = false;
@@ -729,10 +729,10 @@ async function runCustom(){
     res = await compileRun(withStackBoost(code), stdin, timeLimitMs());
   }
   const totalMs = Math.round(performance.now() - t0);
-  if (res.kind === 'tle'){ showRun('⏱ 运行超时（> ' + timeLimitMs() + 'ms）'); setStatus('超时 · 总耗时 ' + totalMs + 'ms', true); return; }
+  if (res.kind === 'tle'){ showRun('⏱ 运行超时（> ' + timeLimitMs() + 'ms）'); setStatus('超时', true); return; }
   if (!res.ok){
     showCompile(res);
-    setStatus((res.kind === 'run' ? '⚠ 运行崩溃' : '编译失败 (' + res.backend + ')') + ' · 总耗时 ' + totalMs + 'ms', true);
+    setStatus((res.kind === 'run' ? '⚠ 运行崩溃' : '编译失败 (' + res.backend + ')'), true);
     return;
   }
   if (viaWrapper){
@@ -740,15 +740,16 @@ async function runCustom(){
     const pc = parsed.cases[0];
     if (pc){
       const actual = pc.out.join('\n');
-      const timeTxt = pc.time != null ? pc.time + 'ms（CPU，评测机口径）' : '—';
-      showRun('运行时间 ' + timeTxt + (parsed.mem ? ' · 峰值内存 ' + parsed.mem + ' KB' : '') + '\n--- 程序输出 ---\n' + (actual || '(无输出)'));
-      setStatus('完成 · 运行时间 ' + timeTxt + (parsed.mem ? ' · 内存 ' + parsed.mem + ' KB' : '') + ' · 总耗时 ' + totalMs + 'ms');
+      const timeTxt = pc.time != null ? pc.time + 'ms' : '—';
+      const secs = (totalMs / 1000).toFixed(1);
+      showRun('运行时间 ' + timeTxt + '（CPU，评测机口径）' + (parsed.mem ? ' · 峰值内存 ' + parsed.mem + ' KB' : '') + '\n--- 程序输出 ---\n' + (actual || '(无输出)') + '\n（本次请求共 ' + secs + 's，含编译与网络）');
+      setStatus('完成 · 运行时间 ' + timeTxt + '（CPU）' + (parsed.mem ? ' · 内存 ' + parsed.mem + ' KB' : ''));
       return;
     }
   }
   // 兜底：直接显示程序输出
   showRun((res.text || '(无输出)') + (res.err ? '\n[stderr] ' + res.err : ''));
-  setStatus('完成 · 总耗时 ' + totalMs + 'ms');
+  setStatus('完成');
 }
 function showCompile(res){
   $('outCompile').textContent = res.ok ? '(无编译信息)' : res.text;
