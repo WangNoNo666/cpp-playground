@@ -173,7 +173,7 @@ input.txt:focus{border-color:var(--acc2);}
   </select>
   <span>编译器</span><select id="compilerSel"></select>
   <span>参数</span><input id="argsInput" value="-std=c++20 -O2" spellcheck="false">
-  <span>时限</span><input id="timeLimit" value="10000" title="单次运行时限（毫秒），超时自动停止" spellcheck="false">
+  <span>时限</span><input id="timeLimit" value="20000" title="单次运行时限（毫秒），超时自动停止；Wandbox 排队时编译可能较慢，如频繁超时可调大" spellcheck="false">
   <span id="statusText">就绪 — 按 F9 运行全部样例</span>
   <span id="memText" title="编译后端不提供内存统计，故显示为 —">内存 —</span>
   <span id="stackChip" title="运行程序默认将栈提升至 512MB，深递归不崩">栈 512MB</span>
@@ -493,7 +493,7 @@ async function runGodbolt(code, stdin, args, signal){
 }
 function timeLimitMs(){
   const v = parseInt($('timeLimit').value, 10);
-  return (v && v > 0) ? v : 10000;
+  return (v && v >= 1000) ? v : 20000;
 }
 async function compileRun(code, stdin, limitMs){
   const args = $('argsInput').value.trim() || '-std=c++20 -O2';
@@ -509,12 +509,12 @@ async function compileRun(code, stdin, limitMs){
   for (const b of attempts){
     try {
       const res = b === 'wandbox' ? await runWandbox(code, stdin, compiler, args, ctl.signal) : await runGodbolt(code, stdin, args, ctl.signal);
-      if (ctl.signal.aborted) return { backend: b, ok: false, kind: 'tle', text: '运行超时（> ' + lim + 'ms）', ms: msNow() };
+      if (ctl.signal.aborted) return { backend: b, ok: false, kind: 'tle', text: '运行超时（> ' + lim + 'ms）— 可能后端排队较慢或代码运行过久，可调大时限重试', ms: msNow() };
       clearTimeout(timer);
       if (res.ok) return { backend: b, ...res, ms: msNow() };
       lastErr = { backend: b, ...res, ms: msNow() };
     } catch (e){
-      if (ctl.signal.aborted) return { backend: b, ok: false, kind: 'tle', text: '运行超时（> ' + lim + 'ms）', ms: msNow() };
+      if (ctl.signal.aborted) return { backend: b, ok: false, kind: 'tle', text: '运行超时（> ' + lim + 'ms）— 可能后端排队较慢或代码运行过久，可调大时限重试', ms: msNow() };
       lastErr = { backend: b, ok: false, kind: 'net', text: '网络错误: ' + e.message, ms: msNow() };
     }
   }
@@ -639,7 +639,7 @@ async function runAll(){
       if (res.kind === 'tle'){
         cases.forEach(c => { c.result = 'tle'; c.time = res.ms; c.actual = res.text; });
         renderCases();
-        setStatus('⏱ 批量运行超时（> ' + timeLimitMs() + 'ms），已中止');
+        setStatus('⏱ 批量运行超时（> ' + timeLimitMs() + 'ms），已中止 — 可调大时限重试');
         showRun('⏱ 运行超时，已自动中止\n\n' + (res.text || ''));
         running = false; $('runBtn').disabled = false;
         return;
@@ -1124,7 +1124,10 @@ function doLoad(){
     if (d.backend) $('backendSel').value = d.backend;
     if (d.compiler && WANDBOX_COMPILERS.indexOf(d.compiler) >= 0) $('compilerSel').value = d.compiler;
     if (d.args) $('argsInput').value = d.args;
-    if (d.limit) $('timeLimit').value = d.limit;
+    if (d.limit){
+      const v = parseInt(d.limit, 10);
+      $('timeLimit').value = (v && v >= 1000) ? v : 20000;   // 防止本地保存的异常小值导致全部超时
+    }
   } catch (e) {}
 }
 
