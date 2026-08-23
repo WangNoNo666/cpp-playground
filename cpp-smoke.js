@@ -193,6 +193,22 @@ function buildSandbox(){
   (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'w', altKey: true, preventDefault(){} }));
   ok('Alt+W closes tab', s.window.__app().tabCount === tw - 1, 'before=' + tw + ' after=' + s.window.__app().tabCount);
 
+  // 代码模板
+  s.window.__setCode('#include <iostream>\nint main(){ return 0; }');
+  doc.getElementById('tplName').value = 'mytpl';
+  s.window.__saveCurrentTemplate();
+  ok('save current code as template', s.window.__templates().length === 1 && s.window.__templates()[0].name === 'mytpl', JSON.stringify(s.window.__templates().map(t => t.name)));
+  ok('template persisted to localStorage', store['cppPlayground.templates'] && store['cppPlayground.templates'].indexOf('mytpl') >= 0);
+  s.window.__insertTemplate('// TEMPLATE_INSERTED');
+  ok('insert template into code', s.window.__app().code.indexOf('TEMPLATE_INSERTED') >= 0, 'has=' + s.window.__app().code.indexOf('TEMPLATE_INSERTED'));
+  const tplTabsBefore = s.window.__app().tabCount;
+  s.window.__newFromTemplate('segtree', '#include <bits/stdc++.h>\nstruct SegTree {};');
+  ok('new tab from template', s.window.__app().tabCount === tplTabsBefore + 1 && s.window.__tabs().some(t => t.name === 'segtree.cpp'));
+  s.window.__openTemplates();
+  ok('template panel opens', !doc.getElementById('tplScreen').classList.contains('hidden'));
+  (doc.getElementById('tplCloseBtn')._handlers.click || []).forEach(fn => fn());
+  ok('template panel closes', doc.getElementById('tplScreen').classList.contains('hidden'));
+
   console.log(errors.length ? ('\n' + errors.length + ' FAILURES') : '\nALL CPP-PLAYGROUND V2 TESTS PASSED');
   process.exit(errors.length ? 1 : 0);
 })().catch(e => { console.log('FATAL: ' + e.stack); process.exit(1); });

@@ -94,6 +94,20 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
 #statusText{flex:1;overflow:hidden;text-overflow:ellipsis;}
 #shortcutHint{color:rgba(255,255,255,.8);font-size:11px;}
 #memText{cursor:help;border-bottom:1px dotted rgba(255,255,255,.5);}
+/* ---- 模板面板 ---- */
+.tplSaveRow{display:flex;gap:8px;margin:10px 0 4px;align-items:center;}
+.tplSaveRow .txt{flex:1;background:#1a1a1a;border:1px solid var(--border);color:var(--fg);border-radius:5px;
+  padding:7px 10px;font-size:13px;outline:none;text-align:left;}
+.tplSaveRow .txt:focus{border-color:var(--acc2);}
+.tplList{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+.tplRow{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);
+  border-radius:6px;padding:7px 10px;font-size:13px;}
+.tplRow .tname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}
+.tplRow .tbtn{background:var(--bg2);border:1px solid var(--border);color:var(--fg);border-radius:4px;
+  padding:3px 10px;font-size:12px;cursor:pointer;white-space:nowrap;}
+.tplRow .tbtn:hover{border-color:var(--acc2);color:#fff;}
+.tplRow .tbtn.del:hover{border-color:var(--red);color:var(--red);}
+.tplEmpty{color:var(--fg2);font-size:12px;padding:8px 4px;text-align:left;}
 /* ---- 拖拽提示 ---- */
 #dropHint{position:fixed;inset:0;background:rgba(14,99,156,.25);display:none;align-items:center;
   justify-content:center;z-index:100;pointer-events:none;border:3px dashed var(--acc2);}
@@ -105,9 +119,10 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
 <div id="tabbar">
   <div id="tabs"></div>
   <div id="tabbarBtns">
-    <button class="iconBtn" id="openBtn" title="打开文件 (Ctrl+O)">📂</button>
+    <button class="iconBtn" id="openBtn" title="打开文件 (Ctrl+O / Alt+O)">📂</button>
     <button class="iconBtn" id="shareBtn" title="复制分享链接">📤</button>
-    <button class="iconBtn" id="newTabBtn" title="新建文件 (Ctrl+N)">＋</button>
+    <button class="iconBtn" id="tplBtn" title="代码模板">📋</button>
+    <button class="iconBtn" id="newTabBtn" title="新建文件 (Ctrl+N / Alt+N)">＋</button>
     <button id="runBtn" title="编译并运行全部样例 (F9)">▶ 运行 (F9)</button>
   </div>
 </div>
@@ -145,6 +160,20 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
   <span id="shortcutHint" title="Chrome 中 Ctrl+W/N 为浏览器快捷键，请用 Alt 组合">F9 运行 · Ctrl+Enter 自定义输入 · Ctrl+S 保存 · Alt+N 新建 · Alt+W 关标签 · Alt+O 打开 · 拖拽文件打开</span>
 </div>
 <div id="dropHint"><div class="box">📄 松开以打开文件（自动新建标签）</div></div>
+<div id="tplScreen" class="overlay hidden">
+  <div class="dialog" style="min-width:480px;">
+    <h2>📋 代码模板</h2>
+    <div class="tplSaveRow">
+      <input id="tplName" class="txt" placeholder="模板名称" spellcheck="false">
+      <button id="tplSaveBtn" class="tbtn" style="padding:7px 14px;">保存当前代码为模板</button>
+    </div>
+    <div class="lbTitle">内置模板</div>
+    <div id="tplBuiltin" class="tplList"></div>
+    <div class="lbTitle">我的模板</div>
+    <div id="tplMine" class="tplList"></div>
+    <div class="row"><button class="bigBtn" id="tplCloseBtn" style="background:linear-gradient(135deg,#8a93a6,#5a6272);box-shadow:none;">关闭</button></div>
+  </div>
+</div>
 <input type="file" id="fileInput" multiple hidden>
 <input type="file" id="caseFileInput" hidden>
 <script src="editor.bundle.js"></script>
@@ -655,6 +684,183 @@ function activateOutTab(t){
 }
 function setStatus(s){ $('statusText').textContent = s; }
 
+/* ---------------- 代码模板 ---------------- */
+const BUILTIN_TEMPLATES = [
+  { name: 'C++20 快速模板', code: String.raw`#include <bits/stdc++.h>
+using namespace std;
+using ll = long long;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int T = 1;
+    // cin >> T;          // 多组测试时取消注释
+    while (T--) {
+        // TODO
+    }
+    return 0;
+}` },
+  { name: '快读快写', code: String.raw`#include <bits/stdc++.h>
+using namespace std;
+
+int readInt() {
+    int x = 0, f = 1; char c = getchar();
+    while (c < '0' || c > '9') { if (c == '-') f = -1; c = getchar(); }
+    while (c >= '0' && c <= '9') { x = x * 10 + (c - '0'); c = getchar(); }
+    return x * f;
+}
+void writeInt(int x) {
+    if (x < 0) { putchar('-'); x = -x; }
+    if (x > 9) writeInt(x / 10);
+    putchar(x % 10 + '0');
+}` },
+  { name: '并查集 DSU', code: String.raw`#include <bits/stdc++.h>
+using namespace std;
+
+struct DSU {
+    vector<int> fa;
+    DSU(int n) { fa.resize(n + 1); iota(fa.begin(), fa.end(), 0); }
+    int find(int x) { return fa[x] == x ? x : fa[x] = find(fa[x]); }
+    void unite(int a, int b) { fa[find(a)] = find(b); }
+    bool same(int a, int b) { return find(a) == find(b); }
+};` },
+  { name: '线段树（点改·区间查）', code: String.raw`#include <bits/stdc++.h>
+using namespace std;
+
+struct SegTree {
+    int n;
+    vector<long long> sum;
+    SegTree(int n_) { n = n_; sum.assign(n * 4, 0); }
+    void update(int idx, long long val, int node = 1, int l = 0, int r = -1) {
+        if (r < 0) r = n - 1;
+        if (l == r) { sum[node] = val; return; }
+        int mid = (l + r) / 2;
+        if (idx <= mid) update(idx, val, node * 2, l, mid);
+        else update(idx, val, node * 2 + 1, mid + 1, r);
+        sum[node] = sum[node * 2] + sum[node * 2 + 1];
+    }
+    long long query(int ql, int qr, int node = 1, int l = 0, int r = -1) {
+        if (r < 0) r = n - 1;
+        if (ql > r || qr < l) return 0;
+        if (ql <= l && r <= qr) return sum[node];
+        int mid = (l + r) / 2;
+        return query(ql, qr, node * 2, l, mid) + query(ql, qr, node * 2 + 1, mid + 1, r);
+    }
+};` },
+  { name: 'Dijkstra 最短路', code: String.raw`#include <bits/stdc++.h>
+using namespace std;
+
+const long long INF = 4e18;
+vector<long long> dijkstra(int n, int s, const vector<vector<pair<int, long long>>>& g) {
+    vector<long long> dist(n + 1, INF);
+    priority_queue<pair<long long, int>, vector<pair<long long, int>>, greater<>> pq;
+    dist[s] = 0;
+    pq.push({0, s});
+    while (!pq.empty()) {
+        auto [d, u] = pq.top(); pq.pop();
+        if (d != dist[u]) continue;
+        for (auto [v, w] : g[u]) {
+            if (dist[v] > d + w) {
+                dist[v] = d + w;
+                pq.push({dist[v], v});
+            }
+        }
+    }
+    return dist;
+}` },
+  { name: '快速幂', code: String.raw`long long qpow(long long a, long long b, long long mod) {
+    long long res = 1;
+    while (b) {
+        if (b & 1) res = res * a % mod;
+        a = a * a % mod;
+        b >>= 1;
+    }
+    return res;
+}` }
+];
+const TPL_LS_KEY = 'cppPlayground.templates';
+let userTemplates = [];
+function loadTemplates(){
+  try { userTemplates = JSON.parse(localStorage.getItem(TPL_LS_KEY) || '[]') || []; } catch (e) { userTemplates = []; }
+}
+function saveTemplates(){
+  try { localStorage.setItem(TPL_LS_KEY, JSON.stringify(userTemplates)); } catch (e) {}
+}
+function openTemplates(){
+  renderTemplates();
+  $('tplScreen').classList.remove('hidden');
+}
+function closeTemplates(){ $('tplScreen').classList.add('hidden'); }
+function renderTemplates(){
+  const mkRow = (t, i, isUser) => {
+    const row = document.createElement('div');
+    row.className = 'tplRow';
+    const nm = document.createElement('span'); nm.className = 'tname'; nm.textContent = t.name;
+    const bIns = document.createElement('button'); bIns.className = 'tbtn'; bIns.textContent = '插入';
+    bIns.title = '插入到光标位置';
+    bIns.addEventListener('click', () => { insertTemplate(t.code); });
+    const bNew = document.createElement('button'); bNew.className = 'tbtn'; bNew.textContent = '新建标签';
+    bNew.title = '用模板新建代码文件';
+    bNew.addEventListener('click', () => { newFromTemplate(t.name, t.code); });
+    row.appendChild(nm);
+    row.appendChild(bIns);
+    row.appendChild(bNew);
+    if (isUser){
+      const bDel = document.createElement('button'); bDel.className = 'tbtn del'; bDel.textContent = '删除';
+      bDel.addEventListener('click', () => {
+        if (confirm('删除模板「' + t.name + '」？')){ userTemplates.splice(i, 1); saveTemplates(); renderTemplates(); }
+      });
+      row.appendChild(bDel);
+    }
+    return row;
+  };
+  const bl = $('tplBuiltin');
+  bl.innerHTML = '';
+  BUILTIN_TEMPLATES.forEach(t => bl.appendChild(mkRow(t, 0, false)));
+  const mine = $('tplMine');
+  mine.innerHTML = '';
+  if (!userTemplates.length){
+    const e = document.createElement('div'); e.className = 'tplEmpty';
+    e.textContent = '还没有自定义模板 — 写好代码后点上方「保存当前代码为模板」';
+    mine.appendChild(e);
+  } else {
+    userTemplates.forEach((t, i) => mine.appendChild(mkRow(t, i, true)));
+  }
+}
+function insertTemplate(code){
+  const sep = getCode() && !getCode().endsWith('\n') ? '\n\n' : '\n';
+  if (view){
+    const pos = view.state.selection ? view.state.selection.main.head : view.state.doc.length;
+    view.dispatch({ changes: { from: pos, to: pos, insert: sep + code } });
+    if (view.focus) view.focus();
+  } else {
+    setCode(getCode() + sep + code);
+  }
+  setStatus('✓ 已插入模板');
+}
+function newFromTemplate(name, code){
+  const base = name.replace(/\.cpp$/i, '');
+  newTab(base + '.cpp', code);
+  setStatus('✓ 已用模板「' + name + '」新建文件');
+  closeTemplates();
+}
+function saveCurrentTemplate(){
+  const code = getCode();
+  if (!code.trim()){ setStatus('⚠ 当前代码为空，无法保存为模板'); return; }
+  let name = $('tplName').value.trim();
+  if (!name){
+    let n = userTemplates.length + 1;
+    name = '模板 ' + n;
+    while (userTemplates.some(t => t.name === name)) name = '模板 ' + (++n);
+  }
+  userTemplates.unshift({ name: name, code: code });
+  saveTemplates();
+  $('tplName').value = '';
+  renderTemplates();
+  setStatus('✓ 已保存模板「' + name + '」');
+}
+
 /* ---------------- 分享 ---------------- */
 function buildShareUrl(){
   const t = currentTab();
@@ -865,6 +1071,7 @@ const SAMPLE_CASES = [
 function init(){
   initEditor();
   fillCompilers();
+  loadTemplates();
   doLoad();
   if (!tabs.length){
     newTab('main.cpp', SAMPLE);
@@ -876,6 +1083,9 @@ function init(){
   $('newTabBtn').addEventListener('click', () => newTab('untitled' + (idSeq) + '.cpp'));
   $('openBtn').addEventListener('click', () => $('fileInput').click());
   $('shareBtn').addEventListener('click', shareCode);
+  $('tplBtn').addEventListener('click', openTemplates);
+  $('tplSaveBtn').addEventListener('click', saveCurrentTemplate);
+  $('tplCloseBtn').addEventListener('click', closeTemplates);
   $('runBtn').addEventListener('click', runAll);
   $('addCaseBtn').addEventListener('click', () => addCase('', ''));
   $('backendSel').addEventListener('change', scheduleSave);
@@ -897,7 +1107,7 @@ window.addEventListener('load', init);
 /* 调试钩子（供测试） */
 window.__app = () => ({
   tabCount: tabs.length, activeId: activeTabId, caseCount: cases.length,
-  codeLen: getCode().length, backend: $('backendSel').value, running
+  codeLen: getCode().length, code: getCode(), backend: $('backendSel').value, running
 });
 window.__runAll = runAll;
 window.__runCustom = runCustom;
@@ -908,6 +1118,11 @@ window.__tabs = () => tabs;
 window.__setCode = setCode;
 window.__buildShareUrl = buildShareUrl;
 window.__setUploadTarget = (i, field) => { caseUploadTarget = { i, field }; };
+window.__templates = () => userTemplates;
+window.__saveCurrentTemplate = saveCurrentTemplate;
+window.__insertTemplate = insertTemplate;
+window.__newFromTemplate = newFromTemplate;
+window.__openTemplates = openTemplates;
 </script>
 </body>
 </html>
