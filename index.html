@@ -176,6 +176,7 @@ input.txt:focus{border-color:var(--acc2);}
   <span>时限</span><input id="timeLimit" value="10000" title="单次运行时限（毫秒），超时自动停止" spellcheck="false">
   <span id="statusText">就绪 — 按 F9 运行全部样例</span>
   <span id="memText" title="编译后端不提供内存统计，故显示为 —">内存 —</span>
+  <span id="stackChip" title="运行程序默认将栈提升至 512MB，深递归不崩">栈 512MB</span>
   <span id="shortcutHint" title="Chrome 中 Ctrl+W/N 为浏览器快捷键，请用 Alt 组合">F9 运行 · Ctrl+Enter 自定义输入 · Ctrl+S 保存 · Alt+N 新建 · Alt+W 关标签 · Alt+O 打开 · 拖拽文件打开</span>
 </div>
 <div id="dropHint"><div class="box">📄 松开以打开文件（自动新建标签）</div></div>
@@ -435,7 +436,15 @@ async function runWandbox(code, stdin, compiler, args, signal){
     return { ok: false, kind: 'net', text: 'Wandbox 返回异常(HTTP ' + r.status + '): ' + txt.slice(0, 120) };
   }
   if (j.status !== '0'){
-    return { ok: false, kind: 'compile', text: (j.compiler_error || '') + (j.compiler_message || '') };
+    const cerr = ((j.compiler_error || '') + (j.compiler_message || '')).trim();
+    if (cerr) return { ok: false, kind: 'compile', text: cerr };
+    // 运行期崩溃（段错误/超内存/栈溢出等），与编译错误区分开
+    return {
+      ok: false, kind: 'run',
+      text: '运行异常（退出码 ' + j.status + (j.signal ? '，信号 ' + j.signal : '') + '）\n' +
+        (j.program_error || '').trim() +
+        '\n提示：已默认将栈提升至 512MB；若仍崩溃请检查递归边界、数组越界或无限循环'
+    };
   }
   const out = (j.program_output != null && j.program_output !== '') ? j.program_output : (j.program_message || '');
   const err = (j.program_error || '').trim();
@@ -515,6 +524,21 @@ async function compileRun(code, stdin, limitMs){
 function norm(s){ return String(s || '').replace(/\r/g, '').replace(/\s+$/g, '').replace(/^\s+/g, ''); }
 function escStr(s){ return String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r/g, '').replace(/\n/g, '\\n'); }
 
+/* ---------------- 栈提升（默认 512MB，深递归不崩） ---------------- */
+const STACK_BOOST = `#include <sys/resource.h>
+static void __petalio_boost__(){
+  struct rlimit rl;
+  getrlimit(RLIMIT_STACK, &rl);
+  rlim_t want = (rlim_t)512 * 1024 * 1024;
+  if (rl.rlim_max != (rlim_t)-1 && rl.rlim_max < want) want = rl.rlim_max;
+  rl.rlim_cur = want;
+  setrlimit(RLIMIT_STACK, &rl);
+}
+static struct __petalio_boost_init__ { __petalio_boost_init__(){ __petalio_boost__(); } } __petalio_boost_obj;`;
+function withStackBoost(code){
+  return STACK_BOOST + '\n' + code;
+}
+
 /* ---------------- 批量运行器（一次编译跑全部用例，返回真实耗时/内存） ---------------- */
 function buildBatchSource(userCode, cases){
   let renamed = userCode;
@@ -536,6 +560,7 @@ function buildBatchSource(userCode, cases){
 #include <chrono>
 #include <sys/resource.h>
 using namespace std;
+${STACK_BOOST}
 static string trim2(const string& s){
   size_t a = s.find_first_not_of(" \\t\\r\\n");
   size_t b = s.find_last_not_of(" \\t\\r\\n");
@@ -640,6 +665,14 @@ async function runAll(){
           running = false; $('runBtn').disabled = false;
           return;
         }
+      } else if (res.kind === 'run'){
+        // 批量运行整体崩溃（段错误/栈溢出等）
+        showCompile({ ok: false, text: res.text });
+        cases.forEach(c => { if (!c.result){ c.result = 'fail'; c.actual = res.text; } });
+        renderCases();
+        setStatus('⚠ 运行崩溃：' + (res.text || '').split('\n')[0], true);
+        running = false; $('runBtn').disabled = false;
+        return;
       } else if (res.kind === 'compile'){
         showCompile(res);
         setStatus('编译失败（批量模式，行号含包装代码）· ' + res.ms + 'ms');
@@ -658,13 +691,14 @@ async function runAll(){
     renderCases();
     let res;
     try {
-      res = await compileRun(code, c.input || '');
+      res = await compileRun(withStackBoost(code), c.input || '');
     } catch (e){
       res = { backend: '?', ok: false, kind: 'net', text: '运行异常: ' + e.message, ms: 0 };
     }
     if (res.kind === 'tle'){ c.result = 'tle'; c.time = res.ms; c.actual = res.text; timedOut++; }
-    else if (res.kind === 'compile'){ showCompile(res); setStatus('编译失败 (' + res.backend + ') · ' + res.ms + 'ms'); aborted = true; break; }
+    else if (res.kind === 'compile'){ showCompile(res); setStatus('编译失败 (' + res.backend + ') · ' + res.ms + 'ms', true); aborted = true; break; }
     else if (res.kind === 'net'){ c.result = 'fail'; c.time = res.ms; c.actual = '网络错误：' + res.text; }
+    else if (res.kind === 'run'){ c.result = 'fail'; c.time = res.ms; c.actual = res.text; }
     else if (res.ok && norm(res.text) === norm(c.expected)){ c.result = 'pass'; c.time = res.ms; pass++; }
     else { c.result = 'fail'; c.time = res.ms; c.actual = res.ok ? (res.text || '(无输出)') + (res.err ? '\n[stderr] ' + res.err : '') : (res.text || '运行错误'); }
     renderCases();
@@ -684,12 +718,12 @@ async function runCustom(){
   if (!code.trim()){ setStatus('⚠ 代码为空'); return; }
   setStatus('运行中…（时限 ' + timeLimitMs() + 'ms）');
   const t0 = performance.now();
-  const res = await compileRun(code, stdin);
+  const res = await compileRun(withStackBoost(code), stdin);
   const ms = Math.round(performance.now() - t0);
   if (res.kind === 'tle'){ showRun('⏱ 运行超时（> ' + timeLimitMs() + 'ms）'); setStatus('超时 · ' + ms + 'ms'); return; }
   if (!res.ok){
     showCompile(res);
-    setStatus('编译失败 (' + res.backend + ') · ' + ms + 'ms');
+    setStatus(res.kind === 'run' ? ('⚠ 运行崩溃 · ' + ms + 'ms') : ('编译失败 (' + res.backend + ') · ' + ms + 'ms'), res.kind === 'run' ? true : true);
     return;
   }
   showCompile({ ok: true, text: '' });
@@ -713,7 +747,11 @@ function showRun(text){
 function activateOutTab(t){
   document.querySelectorAll('.ot').forEach(el => el.classList.toggle('active', el.dataset.t === t));
 }
-function setStatus(s){ $('statusText').textContent = s; }
+function setStatus(s, isErr){
+  const el = $('statusText');
+  el.textContent = s;
+  el.style.color = isErr ? '#ffb4b4' : '';
+}
 
 /* ---------------- 代码模板 ---------------- */
 const BUILTIN_TEMPLATES = [

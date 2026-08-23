@@ -149,6 +149,15 @@ function buildSandbox(){
   ok('time limit aborts run (TLE)', tleRes.result === 'tle', 'r=' + tleRes.result + ' actual=' + (tleRes.actual || ''));
   doc.getElementById('timeLimit').value = '10000';
 
+  // 栈提升：深递归 50000×4KB=200MB 栈需求（默认 8MB 会段错误，提升后应通过）
+  s.window.__setCode('#include <bits/stdc++.h>\nusing namespace std;\nvolatile int sink;\nvoid dfs(int dep){ char buf[4096]; buf[0]=1; if(dep<=0) return; dfs(dep-1); sink=buf[0]; }\nint main(){ dfs(50000); cout << "OK " << sink << "\\n"; return 0; }');
+  cs.length = 0;
+  cs.push({ input: '', expected: 'OK 1', result: null, actual: '', time: null });
+  s.window.__runAll();
+  dl = Date.now() + 60000;
+  while (s.window.__app().running && Date.now() < dl) await sleep(200);
+  ok('stack boost: deep recursion passes (512MB)', s.window.__cases()[0].result === 'pass', 'r=' + s.window.__cases()[0].result + ' actual=' + (s.window.__cases()[0].actual || '').slice(0, 40));
+
   // 分享链接 roundtrip
   s.window.__setCode('int SHARED = 777;');
   const url = s.window.__buildShareUrl();
