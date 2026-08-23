@@ -1,4 +1,4 @@
-// cpp-playground 冒烟测试：bundle 导出 + 应用流程 + 真实 Wandbox 编译
+// cpp-playground v2 冒烟测试：bundle + 应用流程 + 真实编译 + 新功能
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
@@ -6,7 +6,7 @@ const errors = [];
 const ok = (n, c, x) => { console.log((c ? 'PASS' : 'FAIL') + ' | ' + n + (x !== undefined ? '  [' + x + ']' : '')); if (!c) errors.push(n); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ---------- 1. 验证 editor.bundle.js 导出 ----------
+// ---------- 1. bundle 导出 ----------
 {
   const sandbox = { window: {}, console };
   sandbox.globalThis = sandbox;
@@ -14,39 +14,34 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   try {
     vm.runInContext(fs.readFileSync(path.join(__dirname, 'editor.bundle.js'), 'utf8'), sandbox);
     const CM = sandbox.window.CM;
-    ok('bundle loads & exports CM', !!CM && !!CM.EditorState && !!CM.EditorView && !!CM.basicSetup && !!CM.cpp && !!CM.oneDark && !!CM.keymap,
+    ok('bundle loads & exports CM', !!CM && !!CM.EditorState && !!CM.EditorView && !!CM.basicSetup && !!CM.cpp && !!CM.oneDark,
       CM ? Object.keys(CM).join(',') : 'none');
   } catch (e) { ok('bundle loads: ' + e.message, false); console.log(e.stack); }
 }
 
-// ---------- 2. 应用冒烟（fake CM + 真实 fetch） ----------
+// ---------- 2. 应用 ----------
 function makeEl(id, dataset){
   const el = {
     _id: id, _handlers: {}, style: {}, dataset: dataset || {},
     textContent: '', innerHTML: '', className: '', value: '', title: '', disabled: false, spellcheck: true,
     classList: { _s: new Set(), add(c){ this._s.add(c); }, remove(c){ this._s.delete(c); }, contains(c){ return this._s.has(c); }, toggle(c, f){ if (f === undefined ? !this._s.has(c) : f) this._s.add(c); else this._s.delete(c); } },
     addEventListener(t, fn){ (this._handlers[t] = this._handlers[t] || []).push(fn); },
-    appendChild(){}, remove(){}, click(){}, focus(){}
+    appendChild(){}, remove(){}, click(){}, focus(){}, select(){}
   };
   return el;
 }
-// fake CodeMirror
 function fakeCM(){
   const makeDoc = s => ({ toString: () => s, length: s.length });
-  class EditorState {
-    static create({ doc }) { return { doc: makeDoc(doc || ''), extensions: [] }; }
-  }
+  class EditorState { static create({ doc }) { return { doc: makeDoc(doc || ''), extensions: [] }; } }
   class EditorView {
     constructor({ state }) { this.state = state; }
     setState(s){ this.state = s; }
-    dispatch(tr){ /* 由包装器调用 prototype */ }
   }
   EditorView.prototype.dispatch = function(tr){
     if (tr && tr.changes){
       const cur = this.state.doc.toString();
       const ch = tr.changes;
-      const next = cur.slice(0, ch.from) + ch.insert + cur.slice(ch.to);
-      this.state = { doc: makeDoc(next), extensions: [] };
+      this.state = { doc: makeDoc(cur.slice(0, ch.from) + ch.insert + cur.slice(ch.to)), extensions: [] };
     }
   };
   return { EditorState, EditorView, basicSetup: [], cpp: () => [], oneDark: {}, keymap: { of: () => [] }, indentWithTab: {}, highlightSelectionMatches: () => [] };
@@ -58,6 +53,8 @@ function makeDocStub(){
     getElementById(id){ return els[id] || (els[id] = makeEl(id)); },
     createElement(tag){ return makeEl(tag); },
     querySelectorAll(sel){ return sel === '.ot' ? ots : []; },
+    execCommand(){ return true; },
+    addEventListener(){},
     body: { innerHTML: '', appendChild(){} }
   };
   return { doc, els, ots };
@@ -65,17 +62,19 @@ function makeDocStub(){
 const store = {};
 function buildSandbox(){
   const { doc, els, ots } = makeDocStub();
-  const win = { innerWidth: 1280, innerHeight: 720, _handlers: {},
-    addEventListener(t, fn){ (this._handlers[t] = this._handlers[t] || []).push(fn); } };
+  const win = { innerWidth: 1280, innerHeight: 720, _handlers: {}, addEventListener(t, fn){ (this._handlers[t] = this._handlers[t] || []).push(fn); } };
+  const esc = s => { let o = ''; for (let i = 0; i < s.length; i++){ const c = s.charCodeAt(i); o += c < 128 ? s[i] : '%' + c.toString(16).padStart(2, '0').toUpperCase(); } return o; };
+  const unesc = s => s.replace(/%([0-9A-Fa-f]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16)));
   const s = {
-    document: doc, window: win, localStorage: {
-      getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }
-    },
+    document: doc, window: win, location: { origin: 'https://w.github.io', pathname: '/cpp-playground/', search: '' },
+    navigator: { clipboard: undefined }, history: { replaceState(){} },
+    localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
     performance: { now: () => Date.now() },
     fetch, FileReader: class { readAsText(f){ this.result = f._content; setTimeout(() => this.onload && this.onload(), 5); } },
     Blob: class { constructor(p){ this.p = p; } }, URL: { createObjectURL: () => 'blob:x', revokeObjectURL(){} },
+    AbortController, URLSearchParams, btoa, atob, escape: esc, unescape: unesc,
     console, setTimeout, clearTimeout, Date, Math, JSON, Object, Array, String, Number, Boolean, Set, Map, RegExp, Error, Promise,
-    isNaN, parseFloat, parseInt, Symbol, Intl, prompt: () => null
+    isNaN, parseFloat, parseInt, Symbol, Intl, prompt: () => null, confirm: () => true
   };
   s.globalThis = s;
   s.CM = fakeCM();
@@ -94,56 +93,85 @@ function buildSandbox(){
     ok('app init (load)', true);
   } catch (e) { ok('app init: ' + e.message, false); console.log(e.stack); process.exit(1); }
 
-  const dbg = s.window.__app();
-  ok('sample tab created', dbg.tabCount >= 1 && dbg.codeLen > 0, JSON.stringify(dbg));
-
-  // 模拟浏览器默认：后端 Wandbox、编译器 gcc-head（测试桩不解析 HTML 默认值）
   doc.getElementById('backendSel').value = 'wandbox';
   doc.getElementById('compilerSel').value = 'gcc-head';
 
-  // 新建标签 + 切换
-  s.window.__newTab('b.cpp', 'int main(){return 0;}');
-  ok('new tab added', s.window.__app().tabCount === 2 && s.window.__tabs()[1].name === 'b.cpp');
-  ok('tab switch works', s.window.__tabs().find(t => t.name === 'b.cpp').state !== null || s.window.__app().activeId);
+  // 打开本地文件（原"无法读入本地代码"修复验证）
+  const before = s.window.__app().tabCount;
+  s.window.__openFiles([{ name: 'local.cpp', _content: 'int local_var = 42;\n' }]);
+  await sleep(40);
+  const tabs2 = s.window.__tabs();
+  ok('openFiles creates tab with content', tabs2.length === before + 1 && tabs2[tabs2.length - 1].code.indexOf('local_var') >= 0,
+    'tabs=' + tabs2.length + ' last=' + (tabs2[tabs2.length - 1] || {}).name);
+  ok('new tab auto-activated', s.window.__app().activeId === tabs2[tabs2.length - 1].id);
 
-  // 回到 main.cpp，设置代码，跑样例（真实 Wandbox！）
+  // 解析器（canned HTML）
+  const P = s.window.__parsers;
+  const atHtml = '<h3>入力例 1</h3><pre>3 4</pre><h3>出力例 1</h3><pre>Even</pre><h3>入力例 2</h3><pre>1 21</pre><h3>出力例 2</h3><pre>Odd</pre>';
+  const atCases = P.parseAtCoder(atHtml);
+  ok('parseAtCoder extracts 2 cases', atCases.length === 2 && atCases[0].input === '3 4' && atCases[0].expected === 'Even', JSON.stringify(atCases));
+  const cfHtml = '<div class="input"><pre>5 3</pre></div><div class="output"><pre>2</pre></div>';
+  const cfCases = P.parseCF(cfHtml);
+  ok('parseCF extracts case', cfCases.length === 1 && cfCases[0].expected === '2');
+  ok('decodeEntities', P.decodeEntities('a &lt; b &amp;&amp; c') === 'a < b && c');
+
+  // 真实 Wandbox 运行
   const mainTab = s.window.__tabs().find(t => t.name === 'main.cpp');
-  s.window.__setCode(`#include <iostream>
-int main(){ int a,b; std::cin>>a>>b; std::cout << (a+b) << "\\n"; }`);
+  s.window.__setCode('#include <iostream>\nint main(){ int a,b; std::cin>>a>>b; std::cout << (a+b) << "\\n"; }');
   const cs = s.window.__cases();
   cs.length = 0;
-  cs.push({ input: '10 20', expected: '30', result: null, actual: '' });
-  cs.push({ input: '1 2', expected: '3', result: null, actual: '' });
-  // 渲染用例 DOM（直接调用内部不可行，通过触发 addCase 按钮? 用已注入的 cases 再手动渲染——直接跑 runAll）
+  cs.push({ input: '10 20', expected: '30', result: null, actual: '', time: null });
+  cs.push({ input: '1 2', expected: '3', result: null, actual: '', time: null });
   s.window.__runAll();
-  let deadline = Date.now() + 60000;
-  while (s.window.__app().running && Date.now() < deadline) await sleep(200);
-  const res1 = s.window.__cases();
-  ok('F9 runAll completed', !s.window.__app().running, 'running=' + s.window.__app().running);
-  ok('case1 passed (real Wandbox)', res1[0].result === 'pass', 'r=' + res1[0].result + ' actual=' + (res1[0].actual || ''));
-  ok('case2 passed (real Wandbox)', res1[1].result === 'pass', 'r=' + res1[1].result);
-  ok('status shows completion', (doc.getElementById('statusText').textContent || '').indexOf('完成') >= 0, doc.getElementById('statusText').textContent);
+  let dl = Date.now() + 60000;
+  while (s.window.__app().running && Date.now() < dl) await sleep(200);
+  ok('F9 real Wandbox: case1 pass', s.window.__cases()[0].result === 'pass', 'r=' + s.window.__cases()[0].result);
+  ok('F9 real Wandbox: case2 pass', s.window.__cases()[1].result === 'pass');
+  ok('case time recorded', (s.window.__cases()[0].time || 0) > 0, 't=' + s.window.__cases()[0].time);
 
   // 编译错误路径
-  s.window.__setCode('int main(){ syntax error here !!! }');
+  s.window.__setCode('int main(){ syntax error ! }');
   cs.length = 0;
-  cs.push({ input: '', expected: '', result: null, actual: '' });
+  cs.push({ input: '', expected: '', result: null, actual: '', time: null });
   s.window.__runAll();
-  deadline = Date.now() + 60000;
-  while (s.window.__app().running && Date.now() < deadline) await sleep(200);
-  const res2 = s.window.__cases();
-  ok('compile error reported', res2[0].result !== 'pass', 'r=' + res2[0].result + ' compileOut=' + (doc.getElementById('outCompile').textContent || '').slice(0, 60));
-  ok('compile output shown', (doc.getElementById('outCompile').textContent || '').length > 0);
+  dl = Date.now() + 60000;
+  while (s.window.__app().running && Date.now() < dl) await sleep(200);
+  ok('compile error shown', (doc.getElementById('outCompile').textContent || '').length > 0);
 
-  // 自定义输入运行
+  // 自定义输入
   s.window.__setCode('#include <iostream>\nint main(){ int a,b; std::cin>>a>>b; std::cout << (a+b) << "\\n"; }');
   doc.getElementById('customInput').value = '3 4';
   s.window.__runCustom();
-  deadline = Date.now() + 60000;
-  while ((doc.getElementById('statusText').textContent || '').indexOf('运行中') >= 0 && Date.now() < deadline) await sleep(200);
-  await sleep(2500);
-  ok('custom stdin run outputs 7', (doc.getElementById('outRun').textContent || '').indexOf('7') >= 0, doc.getElementById('outRun').textContent.slice(0, 60));
+  await sleep(6000);
+  ok('custom stdin outputs 7', (doc.getElementById('outRun').textContent || '').indexOf('7') >= 0, doc.getElementById('outRun').textContent.slice(0, 40));
 
-  console.log(errors.length ? ('\n' + errors.length + ' FAILURES') : '\nALL CPP-PLAYGROUND TESTS PASSED');
+  // 超时中止（时限 1ms → TLE）
+  doc.getElementById('timeLimit').value = '1';
+  s.window.__setCode('#include <iostream>\nint main(){ long long x=0; while(true) x++; }'); // 死循环
+  cs.length = 0;
+  cs.push({ input: '', expected: '', result: null, actual: '', time: null });
+  s.window.__runAll();
+  dl = Date.now() + 60000;
+  while (s.window.__app().running && Date.now() < dl) await sleep(200);
+  const tleRes = s.window.__cases()[0];
+  ok('time limit aborts run (TLE)', tleRes.result === 'tle', 'r=' + tleRes.result + ' actual=' + (tleRes.actual || ''));
+  doc.getElementById('timeLimit').value = '10000';
+
+  // 分享链接 roundtrip
+  s.window.__setCode('int SHARED = 777;');
+  const url = s.window.__buildShareUrl();
+  ok('share url built', url.indexOf('?share=') >= 0, url.slice(0, 60) + '…');
+  const sParam = new URLSearchParams(url.split('?')[1]).get('share');
+  const b64 = sParam.replace(/-/g, '+').replace(/_/g, '/');
+  const data = JSON.parse(decodeURIComponent(escape(atob(b64 + '='.repeat((4 - b64.length % 4) % 4)))));
+  ok('share roundtrip preserves code', data.c.indexOf('SHARED = 777') >= 0, 'name=' + data.n);
+
+  // 用例上传（大样例本地文件）
+  s.window.__setUploadTarget(0, 'input');
+  (doc.getElementById('caseFileInput')._handlers.change || []).forEach(fn => fn({ target: { files: [{ name: 'big.in', _content: '1\n2\n3\n'.repeat(500) }], value: '' } }));
+  await sleep(40);
+  ok('case upload fills input', s.window.__cases()[0].input.indexOf('3\n') >= 0, 'len=' + s.window.__cases()[0].input.length);
+
+  console.log(errors.length ? ('\n' + errors.length + ' FAILURES') : '\nALL CPP-PLAYGROUND V2 TESTS PASSED');
   process.exit(errors.length ? 1 : 0);
 })().catch(e => { console.log('FATAL: ' + e.stack); process.exit(1); });

@@ -45,21 +45,32 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
 #editor .cm-activeLine{background:rgba(255,255,255,.04);}
 #editor .cm-activeLineGutter{background:rgba(255,255,255,.06);}
 /* ---- 测试用例面板 ---- */
-#sidePanel{width:320px;min-width:240px;background:var(--bg2);border-left:1px solid var(--border);
+#sidePanel{width:330px;min-width:240px;background:var(--bg2);border-left:1px solid var(--border);
   display:flex;flex-direction:column;overflow:hidden;}
 #sideHead{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border);font-size:13px;}
 #sideHead b{color:var(--fg);}
 #sideHead .hint{font-size:11px;color:var(--fg2);}
+#fetchRow{display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border);}
+#fetchUrl{flex:1;background:#1a1a1a;color:var(--fg);border:1px solid var(--border);border-radius:5px;
+  padding:5px 8px;font-size:12px;outline:none;min-width:0;}
+#fetchUrl:focus{border-color:var(--acc2);}
+#fetchBtn{background:var(--acc);border:none;color:#fff;border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;}
+#fetchBtn:hover{background:var(--acc2);}
+#fetchBtn:disabled{opacity:.5;cursor:wait;}
 #caseList{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px;}
 .caseBox{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;flex:0 0 auto;}
-.caseHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.caseHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px;}
 .caseHead .cname{font-size:12px;color:var(--fg2);}
-.caseHead .res{font-size:12px;font-weight:bold;padding:2px 8px;border-radius:10px;background:var(--bg2);}
-.res.pass{color:var(--green);} .res.fail{color:var(--red);} .res.run{color:var(--yellow);}
+.caseHead .res{font-size:11px;font-weight:bold;padding:2px 8px;border-radius:10px;background:var(--bg2);white-space:nowrap;}
+.res.pass{color:var(--green);} .res.fail{color:var(--red);} .res.run{color:var(--yellow);} .res.tle{color:var(--yellow);}
 .caseBox label{display:block;font-size:11px;color:var(--fg2);margin:4px 0 2px;}
+.caseBox .inpRow{display:flex;gap:4px;align-items:center;}
 .caseBox textarea{width:100%;height:56px;background:#1a1a1a;color:var(--fg);border:1px solid var(--border);
   border-radius:5px;padding:6px;font-family:Consolas,monospace;font-size:12px;resize:vertical;outline:none;}
 .caseBox textarea:focus{border-color:var(--acc2);}
+.upBtn{background:var(--bg2);border:1px solid var(--border);color:var(--fg2);border-radius:4px;
+  padding:2px 6px;font-size:11px;cursor:pointer;white-space:nowrap;}
+.upBtn:hover{color:var(--fg);border-color:var(--acc2);}
 .caseBox .actual{display:none;background:#121212;border:1px solid var(--border);border-radius:5px;
   padding:6px;font-family:Consolas,monospace;font-size:11px;color:#c8d8c8;white-space:pre-wrap;max-height:120px;overflow:auto;margin-top:4px;}
 .caseBox .actual.show{display:block;}
@@ -82,12 +93,14 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
   padding:10px 14px;font-family:Consolas,monospace;font-size:13px;resize:none;outline:none;}
 #customInput.show{display:block;}
 /* ---- 状态栏 ---- */
-#statusbar{display:flex;align-items:center;gap:16px;height:30px;background:var(--acc);
+#statusbar{display:flex;align-items:center;gap:10px;height:30px;background:var(--acc);
   color:#fff;font-size:12px;padding:0 12px;overflow:hidden;white-space:nowrap;}
 #statusbar select{background:rgba(0,0,0,.25);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:12px;outline:none;}
-#statusbar input{background:rgba(0,0,0,.25);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:12px;outline:none;width:150px;}
+#statusbar input{background:rgba(0,0,0,.25);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:12px;outline:none;width:130px;}
+#timeLimit{width:72px !important;}
 #statusText{flex:1;overflow:hidden;text-overflow:ellipsis;}
 #shortcutHint{color:rgba(255,255,255,.8);font-size:11px;}
+#memText{cursor:help;border-bottom:1px dotted rgba(255,255,255,.5);}
 /* ---- 拖拽提示 ---- */
 #dropHint{position:fixed;inset:0;background:rgba(14,99,156,.25);display:none;align-items:center;
   justify-content:center;z-index:100;pointer-events:none;border:3px dashed var(--acc2);}
@@ -100,6 +113,7 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
   <div id="tabs"></div>
   <div id="tabbarBtns">
     <button class="iconBtn" id="openBtn" title="打开文件 (Ctrl+O)">📂</button>
+    <button class="iconBtn" id="shareBtn" title="复制分享链接">📤</button>
     <button class="iconBtn" id="newTabBtn" title="新建文件 (Ctrl+N)">＋</button>
     <button id="runBtn" title="编译并运行全部样例 (F9)">▶ 运行 (F9)</button>
   </div>
@@ -107,7 +121,11 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
 <div id="main">
   <div id="editorWrap"><div id="editor"></div></div>
   <div id="sidePanel">
-    <div id="sideHead"><b>测试用例</b><span class="hint">F9 运行 · 逐项比对</span></div>
+    <div id="sideHead"><b>测试用例</b><span class="hint">F9 运行 · 拖入 .in/.out 文件可填用例</span></div>
+    <div id="fetchRow">
+      <input id="fetchUrl" placeholder="题目 URL（AtCoder / Codeforces）" spellcheck="false">
+      <button id="fetchBtn">抓取</button>
+    </div>
     <div id="caseList"></div>
     <div style="padding:8px;"><button id="addCaseBtn">＋ 添加用例</button></div>
   </div>
@@ -132,20 +150,25 @@ textarea,pre,input,select{user-select:text;-webkit-user-select:text;}
   </select>
   <span>编译器</span><select id="compilerSel"></select>
   <span>参数</span><input id="argsInput" value="-std=c++20 -O2" spellcheck="false">
+  <span>时限</span><input id="timeLimit" value="10000" title="单次运行时限（毫秒），超时自动停止" spellcheck="false">
   <span id="statusText">就绪 — 按 F9 运行全部样例</span>
-  <span id="shortcutHint">F9 运行样例 · Ctrl+Enter 自定义输入 · Ctrl+S 保存 · Ctrl+N 新建 · Ctrl+W 关闭标签 · Ctrl+O 打开文件</span>
+  <span id="memText" title="编译后端不提供内存统计，故显示为 —">内存 —</span>
+  <span id="shortcutHint">F9 运行 · Ctrl+Enter 自定义输入 · Ctrl+S 保存 · Ctrl+N 新建 · Ctrl+W 关闭 · Ctrl+O 打开 · 拖拽文件打开</span>
 </div>
 <div id="dropHint"><div class="box">📄 松开以打开文件（自动新建标签）</div></div>
 <input type="file" id="fileInput" multiple hidden>
+<input type="file" id="caseFileInput" hidden>
 <script src="editor.bundle.js"></script>
 <script>
 "use strict";
 /* ============================================================
- * C++20 在线编译器 —— VS Code 风格多标签 + CodeMirror 6
- * 快捷键: F9 运行样例 / Ctrl+Enter 自定义输入 / Ctrl+S 保存
+ * C++20 在线编译器 v2
+ * 快捷键: F9 样例 / Ctrl+Enter 自定义输入 / Ctrl+S 保存
  *         Ctrl+N 新建 / Ctrl+W 关闭 / Ctrl+O 打开
- * 拖拽本地文件 → 自动新建标签
- * 编译后端: Wandbox(主) / Compiler Explorer(备)
+ * 拖拽: 代码文件→新标签; .in/.out 文件→填入用例
+ * 用例抓取: AtCoder / Codeforces（直连→allorigins 代理兜底）
+ * 分享: 复制带代码的 URL 链接
+ * 时限: 自定义毫秒数，超时自动中止（防卡死）
  * ============================================================ */
 const $ = id => document.getElementById(id);
 
@@ -172,7 +195,6 @@ function initEditor(){
     return;
   }
   view = new CM.EditorView({ state: makeState(''), parent: el });
-  // 包装 dispatch：仅在文档实际变化时标记 dirty（切换标签用 setState，不会误标）
   view.dispatch = (tr, ...rest) => {
     const before = view.state.doc.toString();
     CM.EditorView.prototype.dispatch.call(view, tr, ...rest);
@@ -180,8 +202,8 @@ function initEditor(){
   };
 }
 
-/* ---------------- 标签管理（VS Code 风格） ---------------- */
-let tabs = [];            // {id, name, code, state, dirty}
+/* ---------------- 标签管理 ---------------- */
+let tabs = [];
 let activeTabId = null;
 let idSeq = 1;
 function newTab(name, code){
@@ -196,7 +218,7 @@ function currentTab(){ return getTab(activeTabId); }
 function switchTab(id){
   const tab = getTab(id);
   if (!tab) return;
-  if (currentTab() && view) currentTab().state = view.state;   // 保存当前标签状态(含撤销历史)
+  if (currentTab() && view) currentTab().state = view.state;
   activeTabId = id;
   if (view) view.setState(tab.state || makeState(tab.code));
   renderTabbar();
@@ -210,9 +232,7 @@ function closeTab(id){
     if (activeTabId){
       const t = getTab(activeTabId);
       if (view) view.setState(t.state || makeState(t.code));
-    } else if (view){
-      view.setState(makeState(''));
-    }
+    } else if (view) view.setState(makeState(''));
   }
   renderTabbar();
 }
@@ -244,8 +264,6 @@ function renderTabbar(){
     bar.appendChild(d);
   }
 }
-
-/* ---------------- 代码读写 ---------------- */
 function getCode(){
   const t = currentTab();
   if (!t) return '';
@@ -258,10 +276,24 @@ function setCode(code){
   else t.code = code;
 }
 
+/* ---------------- 文件读取 ---------------- */
+function readFileText(file, cb, errCb){
+  const r = new FileReader();
+  r.onload = () => cb(String(r.result || ''));
+  r.onerror = () => (errCb ? errCb() : cb(''));
+  r.readAsText(file);
+}
+function openFiles(fileList){
+  const files = Array.from(fileList || []);
+  for (const f of files){
+    readFileText(f, txt => newTab(f.name, txt), () => setStatus('⚠ 读取文件失败: ' + f.name));
+  }
+}
+
 /* ---------------- 测试用例 ---------------- */
-let cases = [];           // {input, expected, result: null|'pass'|'fail'|'run', actual}
+let cases = [];
 function addCase(input, expected){
-  cases.push({ input: input || '', expected: expected || '', result: null, actual: '' });
+  cases.push({ input: input || '', expected: expected || '', result: null, actual: '', time: null });
   renderCases();
 }
 function removeCase(i){
@@ -274,27 +306,120 @@ function renderCases(){
   cases.forEach((c, i) => {
     const box = document.createElement('div');
     box.className = 'caseBox';
+    box.dataset.idx = i;
     const head = document.createElement('div'); head.className = 'caseHead';
     const nm = document.createElement('span'); nm.className = 'cname'; nm.textContent = '用例 ' + (i + 1);
     const res = document.createElement('span');
     res.className = 'res' + (c.result ? ' ' + c.result : '');
-    res.textContent = c.result === 'pass' ? '✓ 通过' : c.result === 'fail' ? '✗ 失败' : c.result === 'run' ? '⏳ 运行中' : '';
+    const tTxt = c.time != null ? ' · ' + c.time + 'ms' : '';
+    res.textContent = c.result === 'pass' ? '✓ 通过' + tTxt : c.result === 'fail' ? '✗ 失败' + tTxt : c.result === 'tle' ? '⏱ 超时' + tTxt : c.result === 'run' ? '⏳ 运行中' : '';
     const del = document.createElement('button'); del.className = 'delCase'; del.textContent = '✕'; del.title = '删除用例';
     del.addEventListener('click', () => removeCase(i));
     head.appendChild(nm); head.appendChild(res); head.appendChild(del);
     const l1 = document.createElement('label'); l1.textContent = '输入';
+    const inpRow = document.createElement('div'); inpRow.className = 'inpRow';
     const inp = document.createElement('textarea'); inp.value = c.input; inp.spellcheck = false;
-    inp.addEventListener('input', () => { c.input = inp.value; c.result = null; res.className = 'res'; res.textContent = ''; scheduleSave(); });
+    inp.className = 'caseIn';
+    inp.addEventListener('input', () => { c.input = inp.value; c.result = null; c.time = null; res.className = 'res'; res.textContent = ''; scheduleSave(); });
+    const upIn = document.createElement('button'); upIn.className = 'upBtn'; upIn.textContent = '上传';
+    upIn.title = '上传本地输入文件';
+    upIn.addEventListener('click', () => { caseUploadTarget = { i: i, field: 'input' }; $('caseFileInput').click(); });
+    inpRow.appendChild(inp); inpRow.appendChild(upIn);
     const l2 = document.createElement('label'); l2.textContent = '期望输出';
+    const expRow = document.createElement('div'); expRow.className = 'inpRow';
     const exp = document.createElement('textarea'); exp.value = c.expected; exp.spellcheck = false;
-    exp.addEventListener('input', () => { c.expected = exp.value; c.result = null; res.className = 'res'; res.textContent = ''; scheduleSave(); });
+    exp.className = 'caseExp';
+    exp.addEventListener('input', () => { c.expected = exp.value; c.result = null; c.time = null; res.className = 'res'; res.textContent = ''; scheduleSave(); });
+    const upOut = document.createElement('button'); upOut.className = 'upBtn'; upOut.textContent = '上传';
+    upOut.title = '上传本地期望输出文件';
+    upOut.addEventListener('click', () => { caseUploadTarget = { i: i, field: 'expected' }; $('caseFileInput').click(); });
+    expRow.appendChild(exp); expRow.appendChild(upOut);
     const act = document.createElement('pre'); act.className = 'actual';
     act.textContent = c.actual ? ('实际输出：\n' + c.actual) : '';
     if (c.result === 'fail' && c.actual) act.classList.add('show');
-    box.appendChild(head); box.appendChild(l1); box.appendChild(inp);
-    box.appendChild(l2); box.appendChild(exp); box.appendChild(act);
+    box.appendChild(head); box.appendChild(l1); box.appendChild(inpRow);
+    box.appendChild(l2); box.appendChild(expRow); box.appendChild(act);
     list.appendChild(box);
   });
+}
+let caseUploadTarget = null;
+$('caseFileInput').addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  if (f && caseUploadTarget){
+    const tgt = caseUploadTarget;
+    readFileText(f, txt => {
+      const c = cases[tgt.i];
+      if (c){ c[tgt.field] = txt; renderCases(); scheduleSave(); }
+    }, () => setStatus('⚠ 读取文件失败'));
+  }
+  caseUploadTarget = null;
+  e.target.value = '';
+});
+
+/* ---------------- 用例抓取（AtCoder / Codeforces） ---------------- */
+function decodeEntities(s){
+  return String(s || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&nbsp;/g, ' ').replace(/&minus;/g, '-').replace(/&times;/g, 'x');
+}
+function parseAtCoder(html){
+  const ins = [...html.matchAll(/入力例\s*\d+\s*<\/h3>\s*<pre[^>]*>([\s\S]*?)<\/pre>/g)].map(m => decodeEntities(m[1]).trim());
+  const outs = [...html.matchAll(/出力例\s*\d+\s*<\/h3>\s*<pre[^>]*>([\s\S]*?)<\/pre>/g)].map(m => decodeEntities(m[1]).trim());
+  const n = Math.min(ins.length, outs.length);
+  const out = [];
+  for (let i = 0; i < n; i++) out.push({ input: ins[i], expected: outs[i] });
+  return out;
+}
+function parseCF(html){
+  const re = /<div class="input"><pre>([\s\S]*?)<\/pre><\/div>\s*<div class="output"><pre>([\s\S]*?)<\/pre><\/div>/g;
+  const out = [];
+  let m;
+  while ((m = re.exec(html))) out.push({ input: decodeEntities(m[1]).trim(), expected: decodeEntities(m[2]).trim() });
+  return out;
+}
+function parseGeneric(html){
+  const reIn = /(?:样例输入|Sample Input|示例输入)\s*\d*\s*<\/?[^>]*>\s*<pre[^>]*>([\s\S]*?)<\/pre>/gi;
+  const reOut = /(?:样例输出|Sample Output|示例输出)\s*\d*\s*<\/?[^>]*>\s*<pre[^>]*>([\s\S]*?)<\/pre>/gi;
+  const ins = [...html.matchAll(reIn)].map(m => decodeEntities(m[1]).trim());
+  const outs = [...html.matchAll(reOut)].map(m => decodeEntities(m[1]).trim());
+  const n = Math.min(ins.length, outs.length);
+  const out = [];
+  for (let i = 0; i < n; i++) out.push({ input: ins[i], expected: outs[i] });
+  return out;
+}
+async function fetchText(url){
+  try {
+    const r = await fetch(url, { headers: { 'Accept': 'text/html' } });
+    if (r.ok){ const t = await r.text(); if (t && t.length > 500) return { text: t, via: '直连' }; }
+  } catch (e) {}
+  try {
+    const r = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
+    if (r.ok){ const t = await r.text(); if (t && t.length > 500) return { text: t, via: '代理' }; }
+  } catch (e) {}
+  return null;
+}
+async function fetchCases(){
+  const url = $('fetchUrl').value.trim();
+  if (!url){ setStatus('⚠ 请输入题目 URL'); return; }
+  const btn = $('fetchBtn');
+  btn.disabled = true;
+  setStatus('抓取题目 ' + url + ' …');
+  const got = await fetchText(url);
+  btn.disabled = false;
+  if (!got){ setStatus('⚠ 抓取失败：网站不可达或不允许跨域'); return; }
+  let parsed = [];
+  if (/atcoder\.jp/i.test(url)) parsed = parseAtCoder(got.text);
+  else if (/codeforces\.com/i.test(url)) parsed = parseCF(got.text);
+  else parsed = parseGeneric(got.text);
+  if (!parsed.length){ setStatus('⚠ 未能提取样例（站点可能改版/需登录）；' + got.via); return; }
+  if (cases.length && !confirm('已有 ' + cases.length + ' 个用例，是否替换为抓取到的 ' + parsed.length + ' 个样例？')){
+    setStatus('已取消，未替换'); return;
+  }
+  cases = parsed.map(x => ({ input: x.input, expected: x.expected, result: null, actual: '', time: null }));
+  renderCases();
+  scheduleSave();
+  setStatus('✓ 抓取到 ' + cases.length + ' 个样例（' + got.via + '）');
 }
 
 /* ---------------- 编译后端 ---------------- */
@@ -313,11 +438,12 @@ function backendOf(){
   const b = $('backendSel').value;
   return b === 'auto' ? null : b;
 }
-async function runWandbox(code, stdin, compiler, args){
+async function runWandbox(code, stdin, compiler, args, signal){
   const r = await fetch('https://wandbox.org/api/compile.json', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0 Safari/537.36' },
-    body: JSON.stringify({ code, compiler, stdin, options: args })
+    body: JSON.stringify({ code, compiler, stdin, options: args }),
+    signal
   });
   let j;
   try {
@@ -346,7 +472,7 @@ async function godboltId(){
   }
   return godboltCompilerId;
 }
-async function runGodbolt(code, stdin, args){
+async function runGodbolt(code, stdin, args, signal){
   const cid = await godboltId();
   const r = await fetch('https://godbolt.org/api/compiler/' + cid + '/compile', {
     method: 'POST',
@@ -355,7 +481,8 @@ async function runGodbolt(code, stdin, args){
       source: code,
       options: { userArguments: args || '-std=c++20 -O2', executeParameters: { stdin, args: [] } },
       filters: { execute: true, labels: false, directives: false, commentOnly: false, trim: false, intel: true }
-    })
+    }),
+    signal
   });
   if (!r.ok){
     const txt = await r.text().catch(() => '');
@@ -373,44 +500,52 @@ async function runGodbolt(code, stdin, args){
   if (j.code !== 0) return { ok: false, kind: 'compile', text: stderr || '编译失败 (code ' + j.code + ')' };
   return { ok: true, text: stdout, err: stderr };
 }
-async function compileRun(code, stdin){
+function timeLimitMs(){
+  const v = parseInt($('timeLimit').value, 10);
+  return (v && v > 0) ? v : 10000;
+}
+async function compileRun(code, stdin, limitMs){
   const args = $('argsInput').value.trim() || '-std=c++20 -O2';
   const compiler = $('compilerSel').value;
   const manual = backendOf();
   const attempts = manual ? [manual] : ['wandbox', 'godbolt'];
+  const lim = limitMs || timeLimitMs();
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), lim);
+  const started = performance.now();
+  const msNow = () => Math.round(performance.now() - started);
   let lastErr = null;
   for (const b of attempts){
     try {
-      const res = b === 'wandbox' ? await runWandbox(code, stdin, compiler, args) : await runGodbolt(code, stdin, args);
-      if (res.ok) return { backend: b, ...res };
-      lastErr = { backend: b, ...res };
+      const res = b === 'wandbox' ? await runWandbox(code, stdin, compiler, args, ctl.signal) : await runGodbolt(code, stdin, args, ctl.signal);
+      if (ctl.signal.aborted) return { backend: b, ok: false, kind: 'tle', text: '运行超时（> ' + lim + 'ms）', ms: msNow() };
+      clearTimeout(timer);
+      if (res.ok) return { backend: b, ...res, ms: msNow() };
+      lastErr = { backend: b, ...res, ms: msNow() };
     } catch (e){
-      lastErr = { backend: b, ok: false, kind: 'net', text: '网络错误: ' + e.message };
+      if (ctl.signal.aborted) return { backend: b, ok: false, kind: 'tle', text: '运行超时（> ' + lim + 'ms）', ms: msNow() };
+      lastErr = { backend: b, ok: false, kind: 'net', text: '网络错误: ' + e.message, ms: msNow() };
     }
   }
+  clearTimeout(timer);
   return { backend: lastErr.backend, ...lastErr };
 }
 function norm(s){ return String(s || '').replace(/\r/g, '').replace(/\s+$/g, '').replace(/^\s+/g, ''); }
 
-/* ---------------- 运行（F9 跑全部样例） ---------------- */
+/* ---------------- 运行 ---------------- */
 let running = false;
 async function runAll(){
   if (running) return;
   const code = getCode();
-  if (!code.trim()){
-    setStatus('⚠ 代码为空'); return;
-  }
-  if (!cases.length){
-    setStatus('⚠ 没有测试用例 — 在右侧面板添加用例（输入/期望输出）');
-    return;
-  }
+  if (!code.trim()){ setStatus('⚠ 代码为空'); return; }
+  if (!cases.length){ setStatus('⚠ 没有测试用例 — 添加用例或输入题目 URL 抓取'); return; }
   running = true;
   $('runBtn').disabled = true;
-  cases.forEach(c => { c.result = null; c.actual = ''; });
+  cases.forEach(c => { c.result = null; c.actual = ''; c.time = null; });
   renderCases();
   const t0 = performance.now();
-  setStatus('编译并运行样例…');
-  let pass = 0, aborted = false;
+  setStatus('编译并运行样例…（时限 ' + timeLimitMs() + 'ms）');
+  let pass = 0, aborted = false, timedOut = 0;
   for (let i = 0; i < cases.length && !aborted; i++){
     const c = cases[i];
     c.result = 'run';
@@ -419,31 +554,20 @@ async function runAll(){
     try {
       res = await compileRun(code, c.input || '');
     } catch (e){
-      res = { backend: '?', ok: false, kind: 'net', text: '运行异常: ' + e.message };
+      res = { backend: '?', ok: false, kind: 'net', text: '运行异常: ' + e.message, ms: 0 };
     }
-    if (res.kind === 'compile'){
-      showCompile(res);
-      setStatus('编译失败 (' + res.backend + ') · ' + Math.round(performance.now() - t0) + 'ms');
-      aborted = true;
-      break;
-    }
-    if (res.kind === 'net'){
-      c.result = 'fail';
-      c.actual = '网络错误：' + res.text;
-      continue;
-    }
-    if (res.ok && norm(res.text) === norm(c.expected)){
-      c.result = 'pass'; pass++;
-    } else {
-      c.result = 'fail';
-      c.actual = res.ok ? (res.text || '(无输出)') + (res.err ? '\n[stderr] ' + res.err : '') : (res.text || '运行错误');
-    }
+    if (res.kind === 'tle'){ c.result = 'tle'; c.time = res.ms; c.actual = res.text; timedOut++; }
+    else if (res.kind === 'compile'){ showCompile(res); setStatus('编译失败 (' + res.backend + ') · ' + res.ms + 'ms'); aborted = true; break; }
+    else if (res.kind === 'net'){ c.result = 'fail'; c.time = res.ms; c.actual = '网络错误：' + res.text; }
+    else if (res.ok && norm(res.text) === norm(c.expected)){ c.result = 'pass'; c.time = res.ms; pass++; }
+    else { c.result = 'fail'; c.time = res.ms; c.actual = res.ok ? (res.text || '(无输出)') + (res.err ? '\n[stderr] ' + res.err : '') : (res.text || '运行错误'); }
     renderCases();
   }
   if (!aborted){
     const ms = Math.round(performance.now() - t0);
-    setStatus('完成: 通过 ' + pass + '/' + cases.length + ' · ' + ms + 'ms');
-    showRun(cases.map((c, i) => '用例 ' + (i + 1) + ': ' + (c.result === 'pass' ? '✓ 通过' : '✗ 失败')).join('\n'));
+    const tleTxt = timedOut ? ' · 超时 ' + timedOut : '';
+    setStatus('完成: 通过 ' + pass + '/' + cases.length + tleTxt + ' · 总耗时 ' + ms + 'ms');
+    showRun(cases.map((c, i) => '用例 ' + (i + 1) + ': ' + (c.result === 'pass' ? '✓ 通过' : c.result === 'tle' ? '⏱ 超时' : '✗ 失败') + (c.time != null ? ' · ' + c.time + 'ms' : '')).join('\n'));
   }
   running = false;
   $('runBtn').disabled = false;
@@ -452,10 +576,11 @@ async function runCustom(){
   const code = getCode();
   const stdin = $('customInput').value;
   if (!code.trim()){ setStatus('⚠ 代码为空'); return; }
-  setStatus('运行中…');
+  setStatus('运行中…（时限 ' + timeLimitMs() + 'ms）');
   const t0 = performance.now();
   const res = await compileRun(code, stdin);
   const ms = Math.round(performance.now() - t0);
+  if (res.kind === 'tle'){ showRun('⏱ 运行超时（> ' + timeLimitMs() + 'ms）'); setStatus('超时 · ' + ms + 'ms'); return; }
   if (!res.ok){
     showCompile(res);
     setStatus('编译失败 (' + res.backend + ') · ' + ms + 'ms');
@@ -484,6 +609,62 @@ function activateOutTab(t){
 }
 function setStatus(s){ $('statusText').textContent = s; }
 
+/* ---------------- 分享 ---------------- */
+function buildShareUrl(){
+  const t = currentTab();
+  if (!t) return '';
+  const data = { n: t.name, c: getCode(), s: cases.map(x => ({ i: x.input, o: x.expected })) };
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  const b64url = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return location.origin + location.pathname + '?share=' + encodeURIComponent(b64url);
+}
+function shareCode(){
+  const url = buildShareUrl();
+  if (!url) return;
+  copyText(url);
+  setStatus('✓ 分享链接已复制');
+}
+function copyText(txt){
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).catch(() => fallbackCopy(txt));
+  } else fallbackCopy(txt);
+}
+function fallbackCopy(txt){
+  const ta = document.createElement('textarea');
+  ta.value = txt;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  ta.remove();
+}
+function loadShare(){
+  let s = null;
+  try { s = new URLSearchParams(location.search).get('share'); } catch (e) {}
+  if (!s) return;
+  try {
+    const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+    const data = JSON.parse(decodeURIComponent(escape(atob(padded))));
+    const name = data.n || 'shared.cpp';
+    const code = data.c || '';
+    if (tabs.length && !getCode().trim()){
+      renameTab(activeTabId, name);
+      setCode(code);
+    } else {
+      newTab(name, code);
+    }
+    if (Array.isArray(data.s)){
+      cases = data.s.map(x => ({ input: x.i || '', expected: x.o || '', result: null, actual: '', time: null }));
+      renderCases();
+    }
+    setStatus('✓ 已加载分享的代码与用例');
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  } catch (e) {
+    setStatus('分享链接无效');
+  }
+}
+
 /* ---------------- 快捷键 ---------------- */
 function handleKeys(e){
   const k = e.key;
@@ -497,7 +678,7 @@ function handleKeys(e){
 }
 window.addEventListener('keydown', handleKeys);
 
-/* ---------------- 文件保存 / 打开 ---------------- */
+/* ---------------- 文件保存 / 拖拽 ---------------- */
 function saveFile(){
   const t = currentTab();
   if (!t) return;
@@ -511,29 +692,37 @@ function saveFile(){
   t.dirty = false;
   renderTabbar();
 }
-function openFiles(fileList){
-  const files = Array.from(fileList || []);
-  for (const f of files){
-    const reader = new FileReader();
-    reader.onload = () => newTab(f.name, String(reader.result || ''));
-    reader.readAsText(f);
-  }
-}
 $('fileInput').addEventListener('change', e => { openFiles(e.target.files); e.target.value = ''; });
-
-/* ---------------- 拖拽文件 ---------------- */
-let dragDepth = 0;
-window.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('dropHint').style.display = 'flex'; });
-window.addEventListener('dragover', e => { e.preventDefault(); });
-window.addEventListener('dragleave', e => { e.preventDefault(); if (--dragDepth <= 0){ dragDepth = 0; $('dropHint').style.display = 'none'; } });
-window.addEventListener('drop', e => {
+/* 拖拽：document 捕获阶段监听，规避编辑器对拖拽事件的拦截 */
+function hasFiles(e){
+  const t = e.dataTransfer;
+  return t && Array.from(t.types || []).indexOf('Files') >= 0;
+}
+document.addEventListener('dragover', e => {
+  if (hasFiles(e)){ e.preventDefault(); $('dropHint').style.display = 'flex'; }
+}, true);
+document.addEventListener('dragleave', e => {
+  if (hasFiles(e)){ e.preventDefault(); $('dropHint').style.display = 'none'; }
+}, true);
+document.addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
   e.preventDefault();
-  dragDepth = 0;
   $('dropHint').style.display = 'none';
-  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
-    openFiles(e.dataTransfer.files);
+  const files = Array.from(e.dataTransfer.files || []);
+  if (!files.length) return;
+  // 拖到某个用例框上 → 填入该用例（.in→输入，.out→期望）
+  const tgt = e.target;
+  const card = tgt && tgt.closest ? tgt.closest('.caseBox') : null;
+  if (card){
+    const idx = parseInt(card.dataset.idx, 10);
+    const field = tgt.classList && tgt.classList.contains('caseExp') ? 'expected' : 'input';
+    if (!isNaN(idx) && cases[idx]){
+      readFileText(files[0], txt => { cases[idx][field] = txt; renderCases(); scheduleSave(); });
+      return;
+    }
   }
-});
+  openFiles(files);
+}, true);
 
 /* ---------------- 持久化 ---------------- */
 const LS_KEY = 'cppPlayground.v1';
@@ -550,7 +739,8 @@ function doSave(){
       cases: cases,
       backend: $('backendSel').value,
       compiler: $('compilerSel').value,
-      args: $('argsInput').value
+      args: $('argsInput').value,
+      limit: $('timeLimit').value
     };
     localStorage.setItem(LS_KEY, JSON.stringify(data));
   } catch (e) {}
@@ -569,6 +759,7 @@ function doLoad(){
     if (d.backend) $('backendSel').value = d.backend;
     if (d.compiler && WANDBOX_COMPILERS.indexOf(d.compiler) >= 0) $('compilerSel').value = d.compiler;
     if (d.args) $('argsInput').value = d.args;
+    if (d.limit) $('timeLimit').value = d.limit;
   } catch (e) {}
 }
 
@@ -605,21 +796,25 @@ const SAMPLE_CASES = [
 function init(){
   initEditor();
   fillCompilers();
-  const restored = doLoad();
+  doLoad();
   if (!tabs.length){
     newTab('main.cpp', SAMPLE);
-    cases = SAMPLE_CASES.map(c => ({ input: c.input, expected: c.expected, result: null, actual: '' }));
+    cases = SAMPLE_CASES.map(c => ({ input: c.input, expected: c.expected, result: null, actual: '', time: null }));
     markDirty();
   }
   renderCases();
   renderTabbar();
   $('newTabBtn').addEventListener('click', () => newTab('untitled' + (idSeq) + '.cpp'));
   $('openBtn').addEventListener('click', () => $('fileInput').click());
+  $('shareBtn').addEventListener('click', shareCode);
   $('runBtn').addEventListener('click', runAll);
   $('addCaseBtn').addEventListener('click', () => addCase('', ''));
+  $('fetchBtn').addEventListener('click', fetchCases);
+  $('fetchUrl').addEventListener('keydown', e => { if (e.key === 'Enter') fetchCases(); });
   $('backendSel').addEventListener('change', scheduleSave);
   $('compilerSel').addEventListener('change', scheduleSave);
   $('argsInput').addEventListener('input', scheduleSave);
+  $('timeLimit').addEventListener('input', scheduleSave);
   document.querySelectorAll('.ot').forEach(el => {
     el.addEventListener('click', () => {
       const t = el.dataset.t;
@@ -629,6 +824,7 @@ function init(){
       $('customInput').className = t === 'input' ? 'show' : '';
     });
   });
+  loadShare();
 }
 window.addEventListener('load', init);
 /* 调试钩子（供测试） */
@@ -643,6 +839,10 @@ window.__openFiles = openFiles;
 window.__cases = () => cases;
 window.__tabs = () => tabs;
 window.__setCode = setCode;
+window.__buildShareUrl = buildShareUrl;
+window.__parsers = { parseAtCoder, parseCF, parseGeneric, decodeEntities };
+window.__fetchCases = fetchCases;
+window.__setUploadTarget = (i, field) => { caseUploadTarget = { i, field }; };
 </script>
 </body>
 </html>
