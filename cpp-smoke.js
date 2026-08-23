@@ -177,7 +177,22 @@ function buildSandbox(){
   const tabsBefore = s.window.__app().tabCount;
   (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'w', ctrlKey: true, preventDefault(){} }));
   ok('Ctrl+W closes tab (not webpage)', s.window.__app().tabCount === tabsBefore - 1, 'before=' + tabsBefore + ' after=' + s.window.__app().tabCount);
-  ok('Ctrl+W preventDefault called', true);
+
+  // Ctrl+W 兜底：若浏览器仍尝试关闭页面，beforeunload 拦截
+  let pdCalled = false;
+  const be = { returnValue: 'x', preventDefault(){ pdCalled = true; } };
+  (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'w', ctrlKey: true, preventDefault(){} }));
+  (win._handlers['beforeunload'] || []).forEach(fn => fn(be));
+  ok('Ctrl+W beforeunload backstop', pdCalled && be.returnValue === '', 'pd=' + pdCalled);
+
+  // Ctrl+N 新建文件 / Ctrl+O 打开本地文件
+  const tn = s.window.__app().tabCount;
+  (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'n', ctrlKey: true, preventDefault(){} }));
+  ok('Ctrl+N new tab', s.window.__app().tabCount === tn + 1, 'before=' + tn + ' after=' + s.window.__app().tabCount);
+  let openClicked = false;
+  doc.getElementById('fileInput').click = () => { openClicked = true; };
+  (win._handlers['keydown'] || []).forEach(fn => fn({ key: 'o', ctrlKey: true, preventDefault(){} }));
+  ok('Ctrl+O opens file dialog', openClicked, 'clicked=' + openClicked);
 
   // 抓取：模拟浏览器 CORS（直连必失败，代理可控）
   const AT_HTML = '<!--' + 'x'.repeat(600) + '--><h3>入力例 1</h3><pre>3 4</pre><h3>出力例 1</h3><pre>Even</pre><h3>入力例 2</h3><pre>1 21</pre><h3>出力例 2</h3><pre>Odd</pre>';

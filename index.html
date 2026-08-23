@@ -405,26 +405,28 @@ async function fetchText(url){
     }
     tried.push('直连');
   } catch (e) { tried.push('直连'); }
-  // 2) 所有代理并行竞争，取第一个有效结果
-  setStatus('直连不可用，正在通过代理抓取…');
+  // 2) 所有代理并行竞争，取第一个有效结果；失败自动重试一轮
   const proxies = [
     ['allorigins.raw', 'https://api.allorigins.win/raw?url=' + enc],
     ['allorigins.get', 'https://api.allorigins.win/get?url=' + enc],
     ['codetabs', 'https://api.codetabs.com/v1/proxy?quest=' + enc]
   ];
-  const results = await Promise.allSettled(proxies.map(async ([name, u]) => {
-    const r = await fetch(u, { signal: abortSignal(12000) });
-    if (!r.ok) throw new Error(name + '(HTTP ' + r.status + ')');
-    let t = await r.text();
-    if (t && t.charAt(0) === '{'){
-      try { const j = JSON.parse(t); if (j.contents) t = j.contents; } catch (e) {}
+  for (let round = 1; round <= 2; round++){
+    setStatus('通过代理抓取中（第 ' + round + ' 轮，共 2 轮）…');
+    const results = await Promise.allSettled(proxies.map(async ([name, u]) => {
+      const r = await fetch(u, { signal: abortSignal(12000) });
+      if (!r.ok) throw new Error(name + '(HTTP ' + r.status + ')');
+      let t = await r.text();
+      if (t && t.charAt(0) === '{'){
+        try { const j = JSON.parse(t); if (j.contents) t = j.contents; } catch (e) {}
+      }
+      if (!t || t.length <= 500) throw new Error(name + '(内容过短)');
+      return { text: t, via: name };
+    }));
+    for (const res of results){
+      if (res.status === 'fulfilled') return res.value;
     }
-    if (!t || t.length <= 500) throw new Error(name + '(内容过短)');
-    return { text: t, via: name };
-  }));
-  for (const res of results){
-    if (res.status === 'fulfilled') return res.value;
-    tried.push(res.reason.message);
+    for (const res of results) tried.push(res.reason.message);
   }
   return { error: tried.join(' · ') };
 }
@@ -826,18 +828,34 @@ function loadShare(){
   }
 }
 
-/* ---------------- 快捷键 ---------------- */
+/* ---------------- 快捷键（双重绑定 + 防重复 + Ctrl+W 兜底） ---------------- */
+let suppressClose = false;   // Ctrl+W 拦截失败时 by beforeunload 兜底
 function handleKeys(e){
+  if (e.__petalioHandled) return;   // 防同一事件被多个监听重复处理
+  e.__petalioHandled = true;
   const k = e.key;
   const ctrl = e.ctrlKey || e.metaKey;
   if (k === 'F9'){ e.preventDefault(); runAll(); return; }
   if (ctrl && k === 'Enter'){ e.preventDefault(); activateOutTab('input'); $('customInput').className = 'show'; runCustom(); return; }
   if (ctrl && (k === 's' || k === 'S')){ e.preventDefault(); saveFile(); return; }
   if (ctrl && (k === 'n' || k === 'N')){ e.preventDefault(); newTab('untitled' + (idSeq) + '.cpp'); return; }
-  if (ctrl && (k === 'w' || k === 'W')){ e.preventDefault(); closeTab(activeTabId); return; }
+  if (ctrl && (k === 'w' || k === 'W')){
+    e.preventDefault();
+    suppressClose = true;   // 若浏览器仍要关闭页面，beforeunload 会拦截
+    closeTab(activeTabId);
+    return;
+  }
   if (ctrl && (k === 'o' || k === 'O')){ e.preventDefault(); $('fileInput').click(); return; }
 }
-window.addEventListener('keydown', handleKeys, true);   // 捕获阶段：确保 Ctrl+W 等被拦截（防止关掉网页）
+window.addEventListener('keydown', handleKeys, true);     // 捕获阶段
+document.addEventListener('keydown', handleKeys, true);   // 双保险
+window.addEventListener('beforeunload', e => {
+  if (suppressClose){
+    suppressClose = false;
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 /* ---------------- 文件保存 / 拖拽 ---------------- */
 function saveFile(){
