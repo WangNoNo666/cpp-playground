@@ -558,6 +558,7 @@ function buildBatchSource(userCode, cases){
 #include <sstream>
 #include <string>
 #include <chrono>
+#include <ctime>
 #include <sys/resource.h>
 using namespace std;
 ${STACK_BOOST}
@@ -572,21 +573,22 @@ int main(){
   const char* EXP[] = {${exps.join(',')}};
   int n = ${cases.length};
   for (int i = 0; i < n; i++){
-    auto t0 = chrono::steady_clock::now();
     istringstream iss(INS[i]);
     streambuf* oldIn = cin.rdbuf(iss.rdbuf());
     ostringstream oss;
     streambuf* oldOut = cout.rdbuf(oss.rdbuf());
+    clock_t c0 = clock();
     ${call};
     cout.flush();
+    clock_t c1 = clock();
     string actual = oss.str();
     cin.rdbuf(oldIn);
     cout.rdbuf(oldOut);
-    auto t1 = chrono::steady_clock::now();
-    double ms = chrono::duration<double, milli>(t1 - t0).count();
+    double cpuMs = (c1 - c0) * 1000.0 / CLOCKS_PER_SEC;   // CPU 时间（评测机口径）
     bool pass = trim2(actual) == trim2(EXP[i]);
-    cout << "[CASE " << (i + 1) << "] " << (pass ? "PASS" : "FAIL") << " time=" << (long long)ms << "ms\\n";
-    if (!pass) cout << "[OUT]\\n" << actual << "[EXP]\\n" << EXP[i] << "\\n";
+    cout << "[CASE " << (i + 1) << "] " << (pass ? "PASS" : "FAIL") << " time=" << (long long)cpuMs << "ms\\n";
+    cout << "[OUT]\\n" << actual << "\\n";
+    if (!pass) cout << "[EXP]\\n" << EXP[i] << "\\n";
   }
   struct rusage ru;
   if (getrusage(RUSAGE_SELF, &ru) == 0) cout << "[MEM] " << ru.ru_maxrss << " KB\\n";
@@ -629,8 +631,8 @@ async function runAll(){
   cases.forEach(c => { c.result = null; c.actual = ''; c.time = null; });
   renderCases();
   const t0 = performance.now();
-  // ---- 批量模式（≥2 用例：一次请求跑全部，含真实时间/内存） ----
-  if (cases.length >= 2){
+  // ---- 批量模式（任意用例数：一次请求跑全部，返回评测机口径 CPU 时间/内存） ----
+  {
     let batchSrc = null, buildErr = false;
     try { batchSrc = buildBatchSource(code, cases); } catch (e) { buildErr = true; }
     if (batchSrc && batchSrc.length <= 60000 && !buildErr){
@@ -718,17 +720,35 @@ async function runCustom(){
   if (!code.trim()){ setStatus('⚠ 代码为空'); return; }
   setStatus('运行中…（时限 ' + timeLimitMs() + 'ms）');
   const t0 = performance.now();
-  const res = await compileRun(withStackBoost(code), stdin);
-  const ms = Math.round(performance.now() - t0);
-  if (res.kind === 'tle'){ showRun('⏱ 运行超时（> ' + timeLimitMs() + 'ms）'); setStatus('超时 · ' + ms + 'ms'); return; }
+  let res, viaWrapper = false;
+  const batchSrc = buildBatchSource(code, [{ input: stdin, expected: '' }]);
+  if (batchSrc && batchSrc.length <= 60000){
+    viaWrapper = true;
+    res = await compileRun(batchSrc, '', timeLimitMs());
+  } else {
+    res = await compileRun(withStackBoost(code), stdin, timeLimitMs());
+  }
+  const totalMs = Math.round(performance.now() - t0);
+  if (res.kind === 'tle'){ showRun('⏱ 运行超时（> ' + timeLimitMs() + 'ms）'); setStatus('超时 · 总耗时 ' + totalMs + 'ms', true); return; }
   if (!res.ok){
     showCompile(res);
-    setStatus(res.kind === 'run' ? ('⚠ 运行崩溃 · ' + ms + 'ms') : ('编译失败 (' + res.backend + ') · ' + ms + 'ms'), res.kind === 'run' ? true : true);
+    setStatus((res.kind === 'run' ? '⚠ 运行崩溃' : '编译失败 (' + res.backend + ')') + ' · 总耗时 ' + totalMs + 'ms', true);
     return;
   }
-  showCompile({ ok: true, text: '' });
+  if (viaWrapper){
+    const parsed = parseBatchOutput(res.text);
+    const pc = parsed.cases[0];
+    if (pc){
+      const actual = pc.out.join('\n');
+      const timeTxt = pc.time != null ? pc.time + 'ms（CPU，评测机口径）' : '—';
+      showRun('运行时间 ' + timeTxt + (parsed.mem ? ' · 峰值内存 ' + parsed.mem + ' KB' : '') + '\n--- 程序输出 ---\n' + (actual || '(无输出)'));
+      setStatus('完成 · 运行时间 ' + timeTxt + (parsed.mem ? ' · 内存 ' + parsed.mem + ' KB' : '') + ' · 总耗时 ' + totalMs + 'ms');
+      return;
+    }
+  }
+  // 兜底：直接显示程序输出
   showRun((res.text || '(无输出)') + (res.err ? '\n[stderr] ' + res.err : ''));
-  setStatus('完成 (' + res.backend + ') · ' + ms + 'ms');
+  setStatus('完成 · 总耗时 ' + totalMs + 'ms');
 }
 function showCompile(res){
   $('outCompile').textContent = res.ok ? '(无编译信息)' : res.text;

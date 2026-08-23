@@ -130,12 +130,14 @@ function buildSandbox(){
   while (s.window.__app().running && Date.now() < dl) await sleep(200);
   ok('compile error shown', (doc.getElementById('outCompile').textContent || '').length > 0);
 
-  // 自定义输入
-  s.window.__setCode('#include <iostream>\nint main(){ int a,b; std::cin>>a>>b; std::cout << (a+b) << "\\n"; }');
+  // 自定义输入（走包装器，显示评测机口径 CPU 时间）
+  s.window.__setCode('#include <iostream>\nint main(){ int a,b; std::cin>>a>>b; std::cout << (a+b) << "\\n"; return 0; }');
   doc.getElementById('customInput').value = '3 4';
   s.window.__runCustom();
-  await sleep(6000);
-  ok('custom stdin outputs 7', (doc.getElementById('outRun').textContent || '').indexOf('7') >= 0, doc.getElementById('outRun').textContent.slice(0, 40));
+  await sleep(8000);
+  const customOut = doc.getElementById('outRun').textContent || '';
+  ok('custom stdin outputs 7', customOut.indexOf('7') >= 0, customOut.slice(0, 60));
+  ok('custom shows judge-style CPU time', customOut.indexOf('运行时间') >= 0 && customOut.indexOf('CPU') >= 0, customOut.slice(0, 60));
 
   // 超时中止（时限 1ms → TLE）
   doc.getElementById('timeLimit').value = '1';
