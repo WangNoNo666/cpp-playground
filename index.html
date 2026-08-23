@@ -388,33 +388,45 @@ function parseGeneric(html){
   for (let i = 0; i < n; i++) out.push({ input: ins[i], expected: outs[i] });
   return out;
 }
+function abortSignal(ms){
+  const ctl = new AbortController();
+  setTimeout(() => ctl.abort(), ms);
+  return ctl.signal;
+}
 async function fetchText(url){
+  const enc = encodeURIComponent(url);
+  const tried = [];
+  // 1) 直连（5s 超时；浏览器跨域会被 CORS 快速拒绝，网络挂起则超时跳过）
   try {
-    const r = await fetch(url, { headers: { 'Accept': 'text/html' } });
-    if (r.ok){ const t = await r.text(); if (t && t.length > 500) return { text: t, via: '直连' }; }
-  } catch (e) {}
-  // CORS 代理兜底（依次尝试）
+    const r = await fetch(url, { headers: { 'Accept': 'text/html' }, signal: abortSignal(5000) });
+    if (r.ok){
+      const t = await r.text();
+      if (t && t.length > 500) return { text: t, via: '直连' };
+    }
+    tried.push('直连');
+  } catch (e) { tried.push('直连'); }
+  // 2) 所有代理并行竞争，取第一个有效结果
+  setStatus('直连不可用，正在通过代理抓取…');
   const proxies = [
-    u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
-    u => 'https://api.allorigins.win/get?url=' + encodeURIComponent(u),
-    u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u)
+    ['allorigins.raw', 'https://api.allorigins.win/raw?url=' + enc],
+    ['allorigins.get', 'https://api.allorigins.win/get?url=' + enc],
+    ['codetabs', 'https://api.codetabs.com/v1/proxy?quest=' + enc]
   ];
-  for (const mk of proxies){
-    try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 12000);
-      const r = await fetch(mk(url), { signal: ctl.signal });
-      clearTimeout(timer);
-      if (r.ok){
-        let t = await r.text();
-        if (t && t.charAt(0) === '{'){
-          try { const j = JSON.parse(t); if (j.contents) t = j.contents; } catch (e) {}
-        }
-        if (t && t.length > 500) return { text: t, via: '代理' };
-      }
-    } catch (e) {}
+  const results = await Promise.allSettled(proxies.map(async ([name, u]) => {
+    const r = await fetch(u, { signal: abortSignal(12000) });
+    if (!r.ok) throw new Error(name + '(HTTP ' + r.status + ')');
+    let t = await r.text();
+    if (t && t.charAt(0) === '{'){
+      try { const j = JSON.parse(t); if (j.contents) t = j.contents; } catch (e) {}
+    }
+    if (!t || t.length <= 500) throw new Error(name + '(内容过短)');
+    return { text: t, via: name };
+  }));
+  for (const res of results){
+    if (res.status === 'fulfilled') return res.value;
+    tried.push(res.reason.message);
   }
-  return null;
+  return { error: tried.join(' · ') };
 }
 async function fetchCases(){
   const url = $('fetchUrl').value.trim();
@@ -424,7 +436,7 @@ async function fetchCases(){
   setStatus('抓取题目 ' + url + ' …');
   const got = await fetchText(url);
   btn.disabled = false;
-  if (!got){ setStatus('⚠ 抓取失败：网站不可达或跨域受限（已尝试直连+3个代理）'); return; }
+  if (!got || got.error){ setStatus('⚠ 抓取失败（' + (got ? got.error : '未知') + '）— 稍后重试，或改用 AtCoder 题目、手动添加用例'); return; }
   if (/codeforces\.com/i.test(url) && /Just a moment|cf-challenge|Cloudflare/i.test(got.text)){
     setStatus('⚠ Codeforces 有反爬验证，代理无法获取；请改用 AtCoder 题目或手动添加用例');
     return;

@@ -179,6 +179,28 @@ function buildSandbox(){
   ok('Ctrl+W closes tab (not webpage)', s.window.__app().tabCount === tabsBefore - 1, 'before=' + tabsBefore + ' after=' + s.window.__app().tabCount);
   ok('Ctrl+W preventDefault called', true);
 
+  // 抓取：模拟浏览器 CORS（直连必失败，代理可控）
+  const AT_HTML = '<!--' + 'x'.repeat(600) + '--><h3>入力例 1</h3><pre>3 4</pre><h3>出力例 1</h3><pre>Even</pre><h3>入力例 2</h3><pre>1 21</pre><h3>出力例 2</h3><pre>Odd</pre>';
+  const realFetch = s.fetch;
+  s.fetch = (u, opt) => {
+    const str = String(u);
+    if (str.startsWith('https://atcoder.jp')) return Promise.reject(new TypeError('Failed to fetch'));
+    if (str.includes('allorigins.win/raw')) return Promise.resolve({ ok: true, text: async () => AT_HTML });
+    return Promise.reject(new TypeError('proxy down'));
+  };
+  doc.getElementById('fetchUrl').value = 'https://atcoder.jp/contests/abc086/tasks/abc086_a';
+  await s.window.__fetchCases();
+  await sleep(50);
+  const fc = s.window.__cases();
+  ok('fetchCases via proxy (CORS simulation)', fc.length === 2 && fc[0].input === '3 4' && fc[0].expected === 'Even', 'cases=' + fc.length + ' status=' + doc.getElementById('statusText').textContent);
+  // 全失败时给出尝试明细
+  s.fetch = () => Promise.reject(new TypeError('all down'));
+  doc.getElementById('fetchUrl').value = 'https://atcoder.jp/contests/abc001/tasks/abc001_1';
+  await s.window.__fetchCases();
+  await sleep(50);
+  ok('fetch failure shows detail', (doc.getElementById('statusText').textContent || '').indexOf('抓取失败') >= 0, doc.getElementById('statusText').textContent);
+  s.fetch = realFetch;
+
   console.log(errors.length ? ('\n' + errors.length + ' FAILURES') : '\nALL CPP-PLAYGROUND V2 TESTS PASSED');
   process.exit(errors.length ? 1 : 0);
 })().catch(e => { console.log('FATAL: ' + e.stack); process.exit(1); });
