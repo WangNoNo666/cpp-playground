@@ -21,6 +21,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- 2. 应用 ----------
 function makeEl(id, dataset){
+  const dec = s => String(s || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
   const el = {
     _id: id, _handlers: {}, style: {}, dataset: dataset || {},
     textContent: '', innerHTML: '', className: '', value: '', title: '', disabled: false, spellcheck: true,
@@ -28,6 +29,10 @@ function makeEl(id, dataset){
     addEventListener(t, fn){ (this._handlers[t] = this._handlers[t] || []).push(fn); },
     appendChild(){}, remove(){}, click(){}, focus(){}, select(){}
   };
+  if (String(id) === 'textarea'){
+    let raw = '';
+    Object.defineProperty(el, 'innerHTML', { get: () => raw, set: v => { raw = v; el.value = dec(v); } });
+  }
   return el;
 }
 function fakeCM(){
@@ -105,6 +110,39 @@ function buildSandbox(){
   ok('openFiles creates tab with content', tabs2.length === before + 1 && tabs2[tabs2.length - 1].code.indexOf('local_var') >= 0,
     'tabs=' + tabs2.length + ' last=' + (tabs2[tabs2.length - 1] || {}).name);
   ok('new tab auto-activated', s.window.__app().activeId === tabs2[tabs2.length - 1].id);
+
+  // 题目解析器（canned HTML，逻辑参考 competitive-companion）
+  const P = s.window.__parsers;
+  const atHtml = '<h2>AtCoder Beginner Contest 086 A - Product</h2><span class="contest-name">AtCoder Beginner Contest 086</span>'
+    + 'Time Limit: 2 sec / Memory Limit: 256 MiB'
+    + '<h3>入力例 1</h3><pre>3 4</pre><h3>出力例 1</h3><pre>Even</pre>'
+    + '<h3>入力例 2</h3><pre>1 21</pre><h3>出力例 2</h3><pre>Odd</pre>';
+  const atP = P.parseAtCoderProblem(atHtml, 'https://atcoder.jp/contests/abc086/tasks/abc086_a');
+  ok('AtCoder parser: 2 tests + limits', atP.tests.length === 2 && atP.tests[0].input === '3 4' && atP.tests[0].output === 'Even'
+    && atP.timeLimit === 2000 && atP.memoryLimit === 256, 'tests=' + atP.tests.length + ' tl=' + atP.timeLimit + ' ml=' + atP.memoryLimit);
+  const cfHtml = '<div class="title">A. Product</div>'
+    + '<div class="time-limit">2 seconds</div><div class="memory-limit">256 megabytes</div>'
+    + '<div class="input"><pre>5 3</pre></div><div class="output"><pre>2</pre></div>'
+    + '<div class="input"><pre>100 200</pre></div><div class="output"><pre>300</pre></div>';
+  const cfP = P.parseCodeforcesProblem(cfHtml, 'https://codeforces.com/problemset/problem/4/A');
+  ok('Codeforces parser: 2 tests + limits', cfP.tests.length === 2 && cfP.tests[1].output === '300'
+    && cfP.timeLimit === 2000 && cfP.memoryLimit === 256, 'tests=' + cfP.tests.length + ' tl=' + cfP.timeLimit + ' ml=' + cfP.memoryLimit);
+  const luJson = { code: 200, currentData: { problem: { pid: 'P1001', name: 'A+B Problem', limits: { time: [1000, 2000], memory: [131072, 262144] }, samples: [['1 2', '3']] } } };
+  const luP = P.parseLuoguProblem('', 'https://www.luogu.com.cn/problem/P1001', luJson);
+  ok('Luogu parser: JSON API path', luP.tests.length === 1 && luP.tests[0].input === '1 2'
+    && luP.timeLimit === 2000 && luP.memoryLimit === 256, 'tests=' + luP.tests.length + ' tl=' + luP.timeLimit + ' ml=' + luP.memoryLimit);
+
+  // 粘贴导入（书签脚本复制的问题数据）
+  const importData = { name: 'Test Problem', url: 'https://atcoder.jp/', timeLimit: 5000, memoryLimit: 512,
+    tests: [{ input: '1 1', output: '2' }, { input: '2 2', output: '4' }] };
+  doc.getElementById('importJson').value = JSON.stringify(importData);
+  (doc.getElementById('importBtn')._handlers.click || []).forEach(fn => fn());
+  const impCases = s.window.__cases();
+  ok('import JSON fills cases', impCases.length === 2 && impCases[0].expected === '2'
+    && doc.getElementById('timeLimit').value === '5000',
+    'cases=' + impCases.length + ' exp=' + JSON.stringify(impCases[0] && impCases[0].expected) + ' limit=' + doc.getElementById('timeLimit').value);
+  ok('import shows problem info', (doc.getElementById('probInfo').textContent || '').indexOf('Test Problem') >= 0, doc.getElementById('probInfo').textContent);
+  doc.getElementById('timeLimit').value = '20000';   // 恢复时限，避免影响后续批量测试
 
   // 真实 Wandbox 运行（2 用例 → 批量模式：一次请求）
   const mainTab = s.window.__tabs().find(t => t.name === 'main.cpp');
